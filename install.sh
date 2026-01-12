@@ -17,7 +17,15 @@ NC='\033[0m' # No Color
 # 변수 설정
 INSTALL_DIR="$HOME/.zsh_menu"
 MENU_FILE="menu.zsh"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 스크립트 디렉토리 감지 (bash와 zsh 모두 지원)
+if [ -n "${BASH_SOURCE[0]}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+elif [ -n "$0" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+else
+    SCRIPT_DIR="$(pwd)"
+fi
 
 # 함수: 배너 출력
 print_banner() {
@@ -84,13 +92,14 @@ create_install_dir() {
 # 파일 복사
 copy_files() {
     info "메뉴 파일 복사 중..."
+    info "소스 디렉토리: $SCRIPT_DIR"
     
     # 현재 스크립트 위치에서 menu.zsh 찾기
     if [ -f "$SCRIPT_DIR/$MENU_FILE" ]; then
         cp "$SCRIPT_DIR/$MENU_FILE" "$INSTALL_DIR/"
-        success "menu.zsh 복사 완료"
+        success "menu.zsh 복사 완료: $SCRIPT_DIR/$MENU_FILE -> $INSTALL_DIR/"
     else
-        error "menu.zsh 파일을 찾을 수 없습니다."
+        error "menu.zsh 파일을 찾을 수 없습니다: $SCRIPT_DIR/$MENU_FILE"
         echo "install.sh와 같은 디렉토리에 menu.zsh가 있어야 합니다."
         exit 1
     fi

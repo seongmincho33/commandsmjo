@@ -1533,18 +1533,74 @@ function _seongmin_python() {
             2) 
                 clear
                 echo "${GREEN}🔋 [ 가상환경 활성화 (Activate) ]${RESET}"
-                echo "설명: 방금 만든 'venv' 가상환경 안으로 들어갑니다."
-                echo "      이제부터 설치하는 패키지는 모두 'venv' 안에만 저장됩니다."
+                echo "설명: 가상환경을 활성화하여 독립된 Python 환경으로 진입합니다."
                 echo ""
-                echo "실행할 명령어: ${YELLOW}source venv/bin/activate${RESET}"
-                echo ""
-                if [ -d "venv" ]; then
-                    source venv/bin/activate
-                    echo "${GREEN}✅ 가상환경이 활성화되었습니다! (프롬프트 앞의 (venv) 확인)${RESET}"
-                else
-                    echo "${RED}❌ 'venv' 폴더가 안 보여요. [1]번으로 먼저 만들어주세요.${RESET}"
+                
+                # 현재 활성화된 가상환경 표시
+                if [[ -n "$VIRTUAL_ENV" ]]; then
+                    echo "${YELLOW}⚡ 현재 활성화된 가상환경: $(basename $VIRTUAL_ENV)${RESET}"
+                    echo ""
                 fi
-                read -k 1 
+                
+                # 현재 디렉토리 및 하위에서 가상환경 찾기
+                echo "${CYAN}📁 발견된 가상환경 목록:${RESET}"
+                echo "----------------------------------------"
+                
+                local venv_list=()
+                local idx=1
+                
+                # pyvenv.cfg 파일을 찾아서 가상환경 디렉토리 확인
+                while IFS= read -r cfg_file; do
+                    if [[ -n "$cfg_file" ]]; then
+                        local venv_dir=$(dirname "$cfg_file")
+                        local venv_name=$(basename "$venv_dir")
+                        local py_version=$(grep "version" "$cfg_file" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' ')
+                        
+                        # 활성화 상태 확인
+                        local venv_status=""
+                        if [[ "$VIRTUAL_ENV" == "$venv_dir" ]]; then
+                            venv_status="${GREEN}[활성화됨]${RESET}"
+                        fi
+                        
+                        venv_list+=("$venv_dir")
+                        echo "  ${GREEN}[$idx]${RESET} $venv_name ${CYAN}(Python $py_version)${RESET} $venv_status"
+                        echo "       📍 $venv_dir"
+                        ((idx++))
+                    fi
+                done <<< "$(find . -maxdepth 3 -name 'pyvenv.cfg' -type f 2>/dev/null)"
+                
+                if [[ ${#venv_list[@]} -eq 0 ]]; then
+                    echo "  ${RED}❌ 가상환경을 찾을 수 없습니다.${RESET}"
+                    echo "  ${YELLOW}💡 [1]번 메뉴에서 가상환경을 먼저 생성해주세요.${RESET}"
+                    echo ""
+                    read -k 1
+                else
+                    echo "----------------------------------------"
+                    echo ""
+                    echo -n "활성화할 가상환경 번호 선택 (0: 취소): "
+                    read venv_choice
+                    
+                    if [[ "$venv_choice" == "0" || -z "$venv_choice" ]]; then
+                        echo "${YELLOW}취소되었습니다.${RESET}"
+                    elif [[ "$venv_choice" =~ ^[0-9]+$ ]] && [[ $venv_choice -ge 1 ]] && [[ $venv_choice -le ${#venv_list[@]} ]]; then
+                        local selected_venv="${venv_list[$venv_choice]}"
+                        local activate_script="$selected_venv/bin/activate"
+                        
+                        if [[ -f "$activate_script" ]]; then
+                            echo ""
+                            echo "실행할 명령어: ${YELLOW}source $activate_script${RESET}"
+                            echo ""
+                            source "$activate_script"
+                            echo "${GREEN}✅ '$(basename $selected_venv)' 가상환경이 활성화되었습니다!${RESET}"
+                            echo "${CYAN}💡 프롬프트 앞에 ($(basename $selected_venv)) 표시를 확인하세요.${RESET}"
+                        else
+                            echo "${RED}❌ 활성화 스크립트를 찾을 수 없습니다.${RESET}"
+                        fi
+                    else
+                        echo "${RED}❌ 잘못된 번호입니다.${RESET}"
+                    fi
+                    read -k 1
+                fi
                 ;;
             3) 
                 clear
@@ -2088,6 +2144,7 @@ function _seongmin_java() {
         echo "  ${CYAN}[5]${RESET} 🪶 Maven (Build/Run)"
         echo "  ${CYAN}[6]${RESET} 🔄 자바 버전 변경 (Switch Version)"
         echo "  ${CYAN}[7]${RESET} 🧐 프로젝트 버전 확인 (Check Project Version)"
+        echo "  ${CYAN}[8]${RESET} 🔪 포트 점유 프로세스 종료 (Kill Port Process)"
         echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
         echo ""
         echo -n "  실행할 번호 > "
@@ -2101,6 +2158,7 @@ function _seongmin_java() {
             5) _seongmin_java_maven ;;
             6) _seongmin_java_switch ;;
             7) _seongmin_java_check_project ;;
+            8) _seongmin_java_kill_port ;;
             0|q|Q) return ;;
             *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
         esac
@@ -2303,6 +2361,142 @@ function _seongmin_java_check_project() {
 
     echo "----------------------------------------"
     echo "엔터를 누르면 돌아갑니다."
+    read -k 1
+}
+
+# 포트 점유 프로세스 종료
+function _seongmin_java_kill_port() {
+    local CYAN='\033[1;36m' YELLOW='\033[1;33m' GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
+    
+    clear
+    echo "${RED}🔪 [ 포트 점유 프로세스 종료 ]${RESET}"
+    echo "설명: 특정 포트를 점유하고 있는 프로세스를 찾아 종료합니다."
+    echo "      Spring Boot 등이 비정상 종료 후 포트를 점유하고 있을 때 유용합니다."
+    echo ""
+    
+    # 자주 사용되는 포트 안내
+    echo "${CYAN}💡 자주 사용되는 포트:${RESET}"
+    echo "   8080 - Spring Boot / Tomcat 기본"
+    echo "   3000 - React / Node.js"
+    echo "   5000 - Flask"
+    echo "   3306 - MySQL"
+    echo "   5432 - PostgreSQL"
+    echo "   6379 - Redis"
+    echo ""
+    
+    echo -n "확인할 포트 번호 입력: "
+    read port_num
+    
+    if [[ -z "$port_num" ]]; then
+        echo "${RED}❌ 포트 번호를 입력해주세요.${RESET}"
+        read -k 1
+        return
+    fi
+    
+    if ! [[ "$port_num" =~ ^[0-9]+$ ]]; then
+        echo "${RED}❌ 숫자만 입력해주세요.${RESET}"
+        read -k 1
+        return
+    fi
+    
+    echo ""
+    echo "${YELLOW}🔍 포트 $port_num 검사 중...${RESET}"
+    echo "실행 명령어: ${CYAN}lsof -i :$port_num${RESET}"
+    echo ""
+    echo "----------------------------------------"
+    
+    # lsof 결과 가져오기
+    local lsof_result=$(lsof -i :$port_num 2>/dev/null)
+    
+    if [[ -z "$lsof_result" ]]; then
+        echo "${GREEN}✅ 포트 $port_num 을 사용하는 프로세스가 없습니다!${RESET}"
+        echo ""
+        read -k 1
+        return
+    fi
+    
+    # 결과 출력
+    echo "$lsof_result"
+    echo "----------------------------------------"
+    echo ""
+    
+    # PID 추출 (헤더 제외)
+    local pids=($(echo "$lsof_result" | tail -n +2 | awk '{print $2}' | sort -u))
+    
+    if [[ ${#pids[@]} -eq 0 ]]; then
+        echo "${GREEN}✅ 종료할 프로세스가 없습니다.${RESET}"
+        read -k 1
+        return
+    fi
+    
+    echo "${YELLOW}발견된 프로세스 PID: ${pids[*]}${RESET}"
+    echo ""
+    echo "  ${GREEN}[1]${RESET} 모든 프로세스 종료 (kill)"
+    echo "  ${RED}[2]${RESET} 모든 프로세스 강제 종료 (kill -9)"
+    echo "  ${CYAN}[3]${RESET} 개별 선택하여 종료"
+    echo "  ${YELLOW}[0]${RESET} 취소"
+    echo ""
+    echo -n "선택: "
+    read kill_choice
+    
+    case $kill_choice in
+        1)
+            echo ""
+            echo "${YELLOW}프로세스 종료 중...${RESET}"
+            for pid in "${pids[@]}"; do
+                echo "  kill $pid"
+                kill $pid 2>/dev/null
+            done
+            echo ""
+            echo "${GREEN}✅ 종료 신호를 보냈습니다.${RESET}"
+            ;;
+        2)
+            echo ""
+            echo "${RED}프로세스 강제 종료 중...${RESET}"
+            for pid in "${pids[@]}"; do
+                echo "  kill -9 $pid"
+                kill -9 $pid 2>/dev/null
+            done
+            echo ""
+            echo "${GREEN}✅ 강제 종료 완료!${RESET}"
+            ;;
+        3)
+            echo ""
+            echo "${CYAN}개별 프로세스 선택:${RESET}"
+            local idx=1
+            for pid in "${pids[@]}"; do
+                local proc_name=$(ps -p $pid -o comm= 2>/dev/null)
+                echo "  [$idx] PID: $pid - $proc_name"
+                ((idx++))
+            done
+            echo ""
+            echo -n "종료할 프로세스 번호 (여러개: 1,2,3 또는 all): "
+            read select_pids
+            
+            if [[ "$select_pids" == "all" ]]; then
+                for pid in "${pids[@]}"; do
+                    kill $pid 2>/dev/null
+                done
+                echo "${GREEN}✅ 모든 프로세스 종료 신호 전송!${RESET}"
+            else
+                IFS=',' read -A selected <<< "$select_pids"
+                for sel in "${selected[@]}"; do
+                    sel=$(echo $sel | tr -d ' ')
+                    if [[ "$sel" =~ ^[0-9]+$ ]] && [[ $sel -ge 1 ]] && [[ $sel -le ${#pids[@]} ]]; then
+                        local target_pid="${pids[$sel]}"
+                        echo "  kill $target_pid"
+                        kill $target_pid 2>/dev/null
+                    fi
+                done
+                echo "${GREEN}✅ 선택한 프로세스 종료 신호 전송!${RESET}"
+            fi
+            ;;
+        0|*)
+            echo "${YELLOW}취소되었습니다.${RESET}"
+            ;;
+    esac
+    
+    echo ""
     read -k 1
 }
 
