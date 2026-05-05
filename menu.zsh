@@ -1,4 +1,448 @@
 # 🌸 성민이의 소중한 명령어 메뉴판 (인터랙티브 버전!)
+
+# ═══════════════════════════════════════════════════════════════
+# 메뉴 자체 버전
+# ═══════════════════════════════════════════════════════════════
+SEONGMIN_MENU_VERSION="2.0.0"
+
+# ═══════════════════════════════════════════════════════════════
+# 공통 인프라 헬퍼 (Phase 1)
+# ═══════════════════════════════════════════════════════════════
+
+# 색상 변수 (NO_COLOR 환경변수 존중)
+_seongmin_init_colors() {
+    if [[ -n "$NO_COLOR" ]]; then
+        PINK='' CYAN='' YELLOW='' GREEN='' RED='' BLUE='' MAGENTA='' RESET=''
+    else
+        PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
+        GREEN='\033[1;32m' RED='\033[1;31m' BLUE='\033[1;34m'
+        MAGENTA='\033[1;35m' RESET='\033[0m'
+    fi
+}
+
+# OS 분기
+_seongmin_is_macos() { [[ "$OSTYPE" == "darwin"* ]]; }
+_seongmin_is_linux() { [[ "$OSTYPE" == "linux-gnu"* ]]; }
+
+# OS 호환성 표시
+_seongmin_compat_mark() {
+    case "$1" in
+        macos_only) echo "✅macOS" ;;
+        linux_only) echo "✅Linux" ;;
+        both)       echo "✅macOS ✅Linux" ;;
+        macos_full) echo "✅macOS ⚠️Linux" ;;
+    esac
+}
+
+# 명령어 존재 확인 + 친절한 안내
+_seongmin_require_cmd() {
+    local cmd="$1"
+    local install_hint="$2"
+    if ! command -v "$cmd" &> /dev/null; then
+        _seongmin_init_colors
+        echo "${RED}❌ '$cmd' 명령어를 찾을 수 없습니다.${RESET}"
+        if [[ -n "$install_hint" ]]; then
+            echo "${YELLOW}💡 설치 방법: $install_hint${RESET}"
+        fi
+        echo ""
+        echo "${CYAN}아무 키나 누르면 돌아갑니다...${RESET}"
+        read -k 1
+        return 1
+    fi
+    return 0
+}
+
+# Breadcrumb 헤더
+_seongmin_header() {
+    _seongmin_init_colors
+    local path="$1"
+    local emoji="${2:-🌸}"
+    echo "${PINK}✨ ============================================== ✨${RESET}"
+    echo "         ${emoji} ${path}"
+    echo "${PINK}✨ ============================================== ✨${RESET}"
+    echo ""
+}
+
+# 일관된 "키 입력 대기" 메시지
+_seongmin_pause() {
+    _seongmin_init_colors
+    echo ""
+    echo "${CYAN}아무 키나 누르면 돌아갑니다...${RESET}"
+    read -k 1
+}
+
+# Docker daemon 체크
+_seongmin_check_docker() {
+    if ! _seongmin_require_cmd docker "https://www.docker.com/products/docker-desktop"; then
+        return 1
+    fi
+    if ! docker info &> /dev/null; then
+        _seongmin_init_colors
+        echo "${RED}❌ Docker daemon이 실행 중이 아닙니다.${RESET}"
+        if _seongmin_is_macos; then
+            echo "${YELLOW}💡 Docker Desktop을 실행해주세요.${RESET}"
+            echo "   ${CYAN}open -a Docker${RESET} (또는 메뉴바에서)"
+        else
+            echo "${YELLOW}💡 sudo systemctl start docker${RESET}"
+        fi
+        _seongmin_pause
+        return 1
+    fi
+    return 0
+}
+
+# Compose v1/v2 자동 감지
+_seongmin_compose_cmd() {
+    if docker compose version &> /dev/null; then
+        echo "docker compose"
+    elif command -v docker-compose &> /dev/null; then
+        echo "docker-compose"
+    else
+        echo ""
+    fi
+}
+
+# brew 명령 가능 여부 (Linux에는 거의 없음)
+_seongmin_check_brew() {
+    _seongmin_require_cmd brew "https://brew.sh"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 직접 실행 모드 (Direct Execution Mode)
+# 사용법: gg git status, gg docker ps, gg brew update 등
+# ═══════════════════════════════════════════════════════════════
+
+# 위험 명령어 확인 함수
+_seongmin_confirm_dangerous() {
+    local cmd="$*"
+    local YELLOW='\033[1;33m'
+    local RED='\033[1;31m'
+    local RESET='\033[0m'
+
+    echo ""
+    echo "${RED}⚠️  주의: 위험한 명령어입니다!${RESET}"
+    echo "${YELLOW}실행할 명령어: $cmd${RESET}"
+    echo ""
+    echo -n "정말 실행할까요? (y/N) > "
+    read confirm
+
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        echo "취소되었습니다."
+        return 1
+    fi
+}
+
+# 위험 명령어 체크 함수
+_seongmin_is_dangerous() {
+    local cmd="$*"
+
+    # 위험 명령어 패턴 목록
+    local dangerous_patterns=(
+        "git push --force"
+        "git push -f"
+        "git reset --hard"
+        "git clean -fd"
+        "git checkout ."
+        "docker system prune"
+        "docker volume prune"
+        "docker container prune"
+        "docker image prune -a"
+        "docker rm -f"
+        "docker rmi -f"
+        "rm -rf"
+        "brew cleanup --prune=all"
+        "brew uninstall"
+        "FLUSHDB"
+        "FLUSHALL"
+        "redis-cli FLUSHDB"
+        "redis-cli FLUSHALL"
+        "git tag -d"
+        "git push origin --delete"
+    )
+
+    for pattern in "${dangerous_patterns[@]}"; do
+        if [[ "$cmd" == *"$pattern"* ]]; then
+            return 0  # 위험함
+        fi
+    done
+
+    return 1  # 안전함
+}
+
+# 직접 실행 함수
+_seongmin_direct() {
+    local category="$1"
+    shift
+    local args="$*"
+    local full_cmd=""
+
+    local GREEN='\033[1;32m'
+    local CYAN='\033[1;36m'
+    local YELLOW='\033[1;33m'
+    local RED='\033[1;31m'
+    local RESET='\033[0m'
+
+    case "$category" in
+        # Git 명령어
+        git|g)
+            full_cmd="git $args"
+            ;;
+
+        # Python 명령어
+        python|py)
+            full_cmd="python3 $args"
+            ;;
+        pip)
+            full_cmd="pip3 $args"
+            ;;
+        venv)
+            case "$args" in
+                create|new)
+                    full_cmd="python3 -m venv venv"
+                    ;;
+                activate|on)
+                    echo "${GREEN}가상환경 활성화:${RESET} source venv/bin/activate"
+                    source venv/bin/activate 2>/dev/null || source .venv/bin/activate 2>/dev/null || echo "${RED}venv를 찾을 수 없어요${RESET}"
+                    return
+                    ;;
+                deactivate|off)
+                    deactivate 2>/dev/null || echo "${YELLOW}활성화된 가상환경이 없어요${RESET}"
+                    return
+                    ;;
+                *)
+                    full_cmd="python3 -m venv $args"
+                    ;;
+            esac
+            ;;
+
+        # Java 명령어
+        java|j)
+            full_cmd="java $args"
+            ;;
+        javac)
+            full_cmd="javac $args"
+            ;;
+        gradle|gr)
+            full_cmd="./gradlew $args"
+            ;;
+        maven|mvn)
+            full_cmd="mvn $args"
+            ;;
+
+        # Homebrew 명령어
+        brew|b)
+            full_cmd="brew $args"
+            ;;
+
+        # Docker 명령어
+        docker|d)
+            full_cmd="docker $args"
+            ;;
+        dc|compose)
+            full_cmd="docker compose $args"
+            ;;
+
+        # Redis 명령어
+        redis)
+            case "$args" in
+                start)
+                    full_cmd="brew services start redis"
+                    ;;
+                stop)
+                    full_cmd="brew services stop redis"
+                    ;;
+                cli)
+                    full_cmd="redis-cli"
+                    ;;
+                *)
+                    full_cmd="redis-cli $args"
+                    ;;
+            esac
+            ;;
+
+        # 버전 확인 단축키
+        version|ver|v)
+            echo "${CYAN}📦 버전 정보${RESET}"
+            echo "─────────────────────────"
+            echo "Python:  $(python3 --version 2>/dev/null || echo 'not installed')"
+            echo "Node:    $(node --version 2>/dev/null || echo 'not installed')"
+            echo "Java:    $(java -version 2>&1 | head -1)"
+            echo "Git:     $(git --version 2>/dev/null || echo 'not installed')"
+            echo "Docker:  $(docker --version 2>/dev/null || echo 'not installed')"
+            echo "─────────────────────────"
+            return
+            ;;
+
+        # 도움말
+        help|h|--help|-h)
+            _seongmin_direct_help
+            return
+            ;;
+
+        # 메뉴 자체 버전
+        --version|-V)
+            echo "${CYAN}🌸 DX Kit${RESET} v${SEONGMIN_MENU_VERSION}  ${YELLOW}(by Seongmin)${RESET}"
+            echo "OS:    $(_seongmin_is_macos && echo macOS || (_seongmin_is_linux && echo Linux) || echo "$OSTYPE")"
+            echo "Shell: ${SHELL}"
+            echo "명령어: ${GREEN}dxk${RESET} (또는 ${CYAN}gg${RESET})"
+            return
+            ;;
+
+        # 메뉴 검색
+        search|find|s)
+            _seongmin_search "$args"
+            return
+            ;;
+
+        # 메뉴 자체 업데이트
+        update|upgrade|self-update)
+            _seongmin_self_update
+            return
+            ;;
+
+        # 알 수 없는 명령어
+        *)
+            echo "${RED}알 수 없는 카테고리: $category${RESET}"
+            echo ""
+            _seongmin_direct_help
+            return 1
+            ;;
+    esac
+
+    # 명령어 실행
+    if [[ -n "$full_cmd" ]]; then
+        # 위험 명령어 체크
+        if _seongmin_is_dangerous "$full_cmd"; then
+            if ! _seongmin_confirm_dangerous "$full_cmd"; then
+                return 1
+            fi
+        fi
+
+        echo "${GREEN}▶ 실행:${RESET} $full_cmd"
+        echo ""
+        eval "$full_cmd"
+    fi
+}
+
+# 직접 실행 모드 도움말
+_seongmin_direct_help() {
+    local CYAN='\033[1;36m'
+    local GREEN='\033[1;32m'
+    local YELLOW='\033[1;33m'
+    local RESET='\033[0m'
+
+    echo "${CYAN}═══════════════════════════════════════════════════${RESET}"
+    echo "        ${GREEN}🚀 직접 실행 모드 사용법${RESET}"
+    echo "${CYAN}═══════════════════════════════════════════════════${RESET}"
+    echo ""
+    echo "${YELLOW}기본 사용법:${RESET} dxk <카테고리> <명령어>    ${CYAN}(별칭: gg)${RESET}"
+    echo ""
+    echo "${GREEN}지원 카테고리:${RESET}"
+    echo "  git, g      │ dxk git status, dxk g pull"
+    echo "  python, py  │ dxk py script.py"
+    echo "  pip         │ dxk pip install requests"
+    echo "  venv        │ dxk venv create, dxk venv on/off"
+    echo "  docker, d   │ dxk d ps, dxk docker images"
+    echo "  dc, compose │ dxk dc up -d, dxk compose down"
+    echo "  brew, b     │ dxk brew update, dxk b install node"
+    echo "  gradle, gr  │ dxk gr build, dxk gradle test"
+    echo "  maven, mvn  │ dxk mvn clean install"
+    echo "  redis       │ dxk redis start/stop/cli"
+    echo "  version, v  │ dxk v (모든 버전 확인)"
+    echo ""
+    echo "${YELLOW}예시:${RESET}"
+    echo "  dxk git status         # git status 실행"
+    echo "  dxk g add .            # git add . 실행"
+    echo "  dxk docker ps -a       # docker ps -a 실행"
+    echo "  dxk venv on            # 가상환경 활성화"
+    echo "  dxk v                  # 설치된 도구 버전 확인"
+    echo ""
+    echo "${GREEN}메뉴 메타 명령:${RESET}"
+    echo "  dxk --version          # 메뉴 버전 표시"
+    echo "  dxk search <키워드>    # 메뉴 항목 검색"
+    echo "  dxk update             # DX Kit 자체 업데이트 (git pull)"
+    echo ""
+    echo "${CYAN}인자 없이 'dxk'만 입력하면 인터랙티브 메뉴가 열립니다.${RESET}"
+    echo "${CYAN}기존 'gg' 명령도 계속 사용 가능합니다.${RESET}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 메뉴 검색 (gg search <키워드>)
+# ═══════════════════════════════════════════════════════════════
+_seongmin_search() {
+    _seongmin_init_colors
+    local keyword="$*"
+    if [[ -z "$keyword" ]]; then
+        echo "${YELLOW}사용법: gg search <키워드>${RESET}"
+        echo "예시: gg search push"
+        return 1
+    fi
+    local menu_file="${HOME}/.zsh_menu/menu.zsh"
+    [[ ! -f "$menu_file" ]] && menu_file="${0:A:h}/menu.zsh" 2>/dev/null
+    [[ ! -f "$menu_file" ]] && menu_file="$(pwd)/menu.zsh"
+
+    if [[ ! -f "$menu_file" ]]; then
+        echo "${RED}menu.zsh 파일 위치를 찾을 수 없어요.${RESET}"
+        return 1
+    fi
+
+    echo "${CYAN}🔍 '${keyword}' 검색 결과:${RESET}"
+    echo "${CYAN}────────────────────────────────────────${RESET}"
+
+    # fzf 있으면 사용, 없으면 grep
+    if command -v fzf &> /dev/null; then
+        grep -n -i "$keyword" "$menu_file" | grep -E "^\s*[0-9]+:.*echo|^\s*[0-9]+:.*function _seongmin_" | \
+            fzf --ansi --preview "echo {} | cut -d: -f2-" --preview-window=down:3:wrap
+    else
+        grep -n -i --color=auto "$keyword" "$menu_file" | \
+            grep -E "echo \"|function _seongmin_" | head -30
+        echo ""
+        echo "${YELLOW}💡 fzf 설치하면 더 편해요: brew install fzf${RESET}"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 메뉴 자체 업데이트 (gg update)
+# ═══════════════════════════════════════════════════════════════
+_seongmin_self_update() {
+    _seongmin_init_colors
+    local install_dir="${HOME}/.zsh_menu"
+
+    echo "${CYAN}🔄 DX Kit 업데이트 확인 중...${RESET}"
+    echo ""
+
+    if [[ ! -d "$install_dir/.git" ]]; then
+        echo "${YELLOW}⚠️  설치 폴더가 git 저장소가 아닙니다.${RESET}"
+        echo "${YELLOW}   소스에서 다시 install.sh를 실행해주세요.${RESET}"
+        return 1
+    fi
+
+    cd "$install_dir" && {
+        echo "${CYAN}현재 버전:${RESET} v${SEONGMIN_MENU_VERSION}"
+        echo "${CYAN}원격 저장소 확인 중...${RESET}"
+        git fetch --quiet 2>&1
+        local behind=$(git rev-list HEAD..@{upstream} --count 2>/dev/null)
+        if [[ "$behind" == "0" || -z "$behind" ]]; then
+            echo "${GREEN}✅ 이미 최신 버전입니다.${RESET}"
+        else
+            echo "${YELLOW}🆕 ${behind}개의 새 커밋이 있습니다.${RESET}"
+            echo -n "지금 업데이트할까요? (y/N) > "
+            read ans
+            if [[ "$ans" =~ ^[Yy]$ ]]; then
+                git pull && {
+                    echo "${GREEN}✅ 업데이트 완료! 새 터미널을 열거나 source ~/.zshrc 하세요.${RESET}"
+                }
+            fi
+        fi
+        cd - > /dev/null
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════
+
 function seongmin() {
     local PINK='\033[1;35m'
     local CYAN='\033[1;36m'
@@ -7,22 +451,35 @@ function seongmin() {
     local RED='\033[1;31m'
     local RESET='\033[0m'
 
+    # 인자가 있으면 직접 실행 모드
+    if [[ -n "$1" ]]; then
+        _seongmin_direct "$@"
+        return $?
+    fi
+
+    # 인자가 없으면 인터랙티브 메뉴
     while true; do
         clear
         echo "${PINK}✨ ============================================== ✨${RESET}"
-        echo "         🌸 성민이의 소중한 명령어 가이드 🌸"
+        echo "      🌸 DX Kit — 성민이의 개발자 경험 도구 v${SEONGMIN_MENU_VERSION}"
         echo "${PINK}✨ ============================================== ✨${RESET}"
         echo ""
-        echo "  ${CYAN}[1]${RESET} 🐙 Git"
-        echo "  ${CYAN}[2]${RESET} 🐍 Python"
-        echo "  ${CYAN}[3]${RESET} ☕ Java"
-        echo "  ${CYAN}[4]${RESET} 🍺 Homebrew"
-        echo "  ${CYAN}[5]${RESET} 🐳 Docker"
-        echo "  ${CYAN}[6]${RESET} 🔴 Redis"
-        echo "  ${CYAN}[7]${RESET} 🐚 Shell"
-        echo "  ${CYAN}[8]${RESET} 🔍 버전 확인"
-        echo "  ${CYAN}[9]${RESET} 🎨 프론트엔드 (Frontend)"
-        echo "  ${CYAN}[10]${RESET} 🔧 Jenkins"
+        echo "  ${YELLOW}[ 개발 도구 ]${RESET}"
+        echo "  ${CYAN}[1]${RESET} 🐙 Git              ${CYAN}[2]${RESET} 🐍 Python"
+        echo "  ${CYAN}[3]${RESET} ☕ Java             ${CYAN}[4]${RESET} 🍺 Homebrew"
+        echo "  ${CYAN}[5]${RESET} 🐳 Docker           ${CYAN}[6]${RESET} 🔴 Redis"
+        echo ""
+        echo "  ${YELLOW}[ 시스템 & 기타 ]${RESET}"
+        echo "  ${CYAN}[7]${RESET} 🐚 Shell            ${CYAN}[8]${RESET} 🔍 버전 확인"
+        echo "  ${CYAN}[9]${RESET} 🎨 Frontend         ${CYAN}[10]${RESET} 🔧 Jenkins"
+        echo "  ${CYAN}[11]${RESET} 🤖 Claude Code"
+        echo ""
+        echo "  ${GREEN}[ 신규 (v2.0) ]${RESET}"
+        echo "  ${CYAN}[12]${RESET} 🔐 SSH 키 관리      ${CYAN}[13]${RESET} 🌐 Network 진단"
+        echo "  ${CYAN}[14]${RESET} 🆕 새 프로젝트 시작 ${CYAN}[15]${RESET} 🆘 응급 처치"
+        echo "  ${CYAN}[16]${RESET} 🧪 유틸 도구"
+        echo ""
+        echo "  ${MAGENTA}[s]${RESET} 🔍 메뉴 검색  ${MAGENTA}[u]${RESET} 🔄 자체 업데이트  ${MAGENTA}[v]${RESET} ℹ️  버전"
         echo "  ${CYAN}[0]${RESET} 🚪 나가기"
         echo ""
         echo "${PINK}✨ ============================================== ✨${RESET}"
@@ -40,6 +497,21 @@ function seongmin() {
             8) _seongmin_version ;;
             9) _seongmin_frontend ;;
             10) _seongmin_jenkins ;;
+            11) _seongmin_claude ;;
+            12) _seongmin_ssh ;;
+            13) _seongmin_network ;;
+            14) _seongmin_newproject ;;
+            15) _seongmin_emergency ;;
+            16) _seongmin_utils ;;
+            s|S)
+                echo -n "  검색 키워드 > "
+                read kw
+                clear
+                _seongmin_search "$kw"
+                _seongmin_pause
+                ;;
+            u|U) clear; _seongmin_self_update; _seongmin_pause ;;
+            v|V) clear; _seongmin_direct --version; _seongmin_pause ;;
             0|q|Q)
                 clear
                 echo "${PINK}✨ 넌 충분히 잘하고 있어! ✨${RESET}"
@@ -122,6 +594,18 @@ function _seongmin_git_basic() {
         echo "      ${YELLOW}→ git add . && git commit -m '<메시지>' && git push${RESET}"
         echo "      설명: 변경사항 추가, 커밋, 푸시를 한 번에 실행합니다."
         echo ""
+        echo "  ${MAGENTA}[8]${RESET} ✨ Conventional Commits 형식으로 커밋"
+        echo "      ${YELLOW}→ feat: / fix: / docs: ...${RESET}"
+        echo "      설명: 표준 형식 prefix를 골라서 커밋합니다."
+        echo ""
+        echo "  ${MAGENTA}[9]${RESET} ✏️  마지막 커밋 수정 (amend)"
+        echo "      ${YELLOW}→ git commit --amend${RESET}"
+        echo "      설명: 직전 커밋의 메시지/내용을 수정합니다."
+        echo ""
+        echo "  ${MAGENTA}[10]${RESET} 📜 .gitignore 템플릿 생성"
+        echo "      ${YELLOW}→ gitignore.io API${RESET}"
+        echo "      설명: 언어/프레임워크에 맞는 .gitignore를 생성합니다."
+        echo ""
         echo "  ${CYAN}[0]${RESET} ⬅️  뒤로가기"
         echo ""
         echo -n "  선택 > "
@@ -190,7 +674,7 @@ function _seongmin_git_basic() {
                 echo ""
                 read -k 1 
                 ;;
-            7) 
+            7)
                 clear
                 echo "${GREEN}🚀 한 번에 커밋 & 푸시${RESET}"
                 echo "현재 변경된 파일:"
@@ -206,7 +690,94 @@ function _seongmin_git_basic() {
                     echo "${GREEN}✅ 커밋 & 푸시 완료!${RESET}"
                 fi
                 echo ""
-                read -k 1 
+                read -k 1
+                ;;
+            8)
+                clear
+                echo "${MAGENTA}✨ Conventional Commits${RESET}"
+                echo ""
+                echo "  ${GREEN}[1]${RESET} feat:     ✨ 새 기능"
+                echo "  ${GREEN}[2]${RESET} fix:      🐛 버그 수정"
+                echo "  ${GREEN}[3]${RESET} docs:     📝 문서 변경"
+                echo "  ${GREEN}[4]${RESET} style:    💄 코드 포매팅"
+                echo "  ${GREEN}[5]${RESET} refactor: ♻️  리팩토링"
+                echo "  ${GREEN}[6]${RESET} perf:     ⚡ 성능 개선"
+                echo "  ${GREEN}[7]${RESET} test:     ✅ 테스트 추가/수정"
+                echo "  ${GREEN}[8]${RESET} chore:    🔧 빌드/도구 변경"
+                echo "  ${GREEN}[9]${RESET} ci:       🤖 CI 설정 변경"
+                echo ""
+                echo -n "타입 선택 > "
+                read ctype
+                local prefix=""
+                case $ctype in
+                    1) prefix="feat" ;;
+                    2) prefix="fix" ;;
+                    3) prefix="docs" ;;
+                    4) prefix="style" ;;
+                    5) prefix="refactor" ;;
+                    6) prefix="perf" ;;
+                    7) prefix="test" ;;
+                    8) prefix="chore" ;;
+                    9) prefix="ci" ;;
+                    *) echo "취소됨"; sleep 1; continue ;;
+                esac
+                echo -n "스코프 (선택, 예: api): "
+                read scope
+                echo -n "커밋 메시지: "
+                read msg
+                [[ -z "$msg" ]] && { echo "메시지 필수!"; sleep 1; continue; }
+                local full_msg="$prefix"
+                [[ -n "$scope" ]] && full_msg="${full_msg}(${scope})"
+                full_msg="${full_msg}: ${msg}"
+                echo ""
+                echo "실행: git commit -m \"$full_msg\""
+                git commit -m "$full_msg"
+                _seongmin_pause
+                ;;
+            9)
+                clear
+                echo "${MAGENTA}✏️  마지막 커밋 수정 (amend)${RESET}"
+                echo ""
+                git log -1 --oneline
+                echo ""
+                echo "  [1] 메시지만 수정"
+                echo "  [2] 스테이징된 변경사항 추가하면서 amend"
+                echo "  [3] 메시지 그대로, 변경사항만 추가 (--no-edit)"
+                echo "  [0] 취소"
+                echo -n "선택: "
+                read ao
+                case $ao in
+                    1)
+                        echo -n "새 메시지: "; read newmsg
+                        [[ -n "$newmsg" ]] && git commit --amend -m "$newmsg"
+                        ;;
+                    2) git commit --amend ;;
+                    3) git commit --amend --no-edit ;;
+                esac
+                _seongmin_pause
+                ;;
+            10)
+                clear
+                echo "${MAGENTA}📜 .gitignore 생성${RESET}"
+                echo "예시: python, node, java, macos, vscode (콤마로 구분)"
+                echo -n "기술 스택 입력: "
+                read stacks
+                [[ -z "$stacks" ]] && { echo "취소됨"; sleep 1; continue; }
+                if [[ -f .gitignore ]]; then
+                    echo "${YELLOW}⚠️  .gitignore가 이미 존재합니다.${RESET}"
+                    echo -n "덮어쓸까요? (y/N): "
+                    read ans
+                    [[ ! "$ans" =~ ^[Yy]$ ]] && continue
+                fi
+                if curl -fsSL "https://www.toptal.com/developers/gitignore/api/$stacks" -o .gitignore; then
+                    echo "${GREEN}✅ .gitignore 생성됨${RESET}"
+                    echo "${CYAN}── 미리보기 ──${RESET}"
+                    head -20 .gitignore
+                    echo "..."
+                else
+                    echo "${RED}❌ 생성 실패. 인터넷 연결 또는 키워드 확인.${RESET}"
+                fi
+                _seongmin_pause
                 ;;
             0|q|Q) return ;;
             *) echo "${RED}잘못된 선택입니다.${RESET}"; sleep 1 ;;
@@ -794,12 +1365,50 @@ function _seongmin_git_remote() {
         echo "      ${YELLOW}→ git push --force${RESET}"
         echo "      설명: ⚠️ 원격 저장소를 로컬 상태로 강제 덮어씁니다."
         echo ""
+        echo "  ${MAGENTA}[8]${RESET} 🔀 PR 생성 (gh pr create)"
+        echo "      ${YELLOW}→ GitHub CLI 필요${RESET}"
+        echo "      설명: 현재 브랜치로 GitHub에 Pull Request를 만듭니다."
+        echo ""
+        echo "  ${MAGENTA}[9]${RESET} 🌐 PR/저장소 브라우저로 열기"
+        echo "      ${YELLOW}→ gh repo view --web${RESET}"
+        echo ""
         echo "  ${CYAN}[0]${RESET} ⬅️  뒤로가기"
         echo ""
         echo -n "  선택 > "
         read sub
         case $sub in
-            1) 
+            8)
+                clear
+                if ! command -v gh &> /dev/null; then
+                    echo "${RED}❌ GitHub CLI(gh) 설치 필요: brew install gh${RESET}"
+                    _seongmin_pause; continue
+                fi
+                if ! gh auth status &> /dev/null; then
+                    echo "${YELLOW}⚠️  먼저 로그인 필요: gh auth login${RESET}"
+                    _seongmin_pause; continue
+                fi
+                echo "${MAGENTA}🔀 PR 생성${RESET}"
+                local current=$(git branch --show-current)
+                echo "${CYAN}현재 브랜치: $current${RESET}"
+                echo ""
+                # 푸시 안 됐으면 먼저 push
+                if ! git rev-parse --abbrev-ref --symbolic-full-name @{u} &> /dev/null; then
+                    echo "${YELLOW}원격에 추적 브랜치가 없어요. push -u 먼저 합니다...${RESET}"
+                    git push -u origin "$current"
+                fi
+                gh pr create
+                _seongmin_pause
+                ;;
+            9)
+                clear
+                if command -v gh &> /dev/null; then
+                    gh repo view --web
+                else
+                    echo "${RED}gh CLI 필요${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            1)
                 clear
                 echo "${GREEN}📥 원격 저장소 업데이트 가져오기${RESET}"
                 echo "실행 명령어: git fetch"
@@ -1428,26 +2037,43 @@ function _seongmin_git_tutorial() {
     done
 }
 function _seongmin_python() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+
     while true; do
         clear
-        echo "${YELLOW}🐍 [ Python 명령어 - 친절 모드 ]${RESET}"
+        # 활성 venv 표시
+        local venv_info=""
+        if [[ -n "$VIRTUAL_ENV" ]]; then
+            venv_info=" ${GREEN}[활성: $(basename $VIRTUAL_ENV)]${RESET}"
+        fi
+        # uv 감지 표시
+        local uv_badge=""
+        command -v uv &> /dev/null && uv_badge=" ${MAGENTA}[uv 감지됨]${RESET}"
+        echo "${YELLOW}🐍 [ Python 명령어 ]${RESET}${venv_info}${uv_badge}"
         echo ""
-        echo "  ${CYAN}[1]${RESET} pv     - 가상환경 생성 (venv)"
-        echo "  ${CYAN}[2]${RESET} pa     - 가상환경 활성화 (activate)"
-        echo "  ${CYAN}[3]${RESET} pd     - 가상환경 비활성화 (deactivate)"
-        echo "  ${CYAN}[4]${RESET} pynew  - 새 프로젝트 시작 (New Project)"
-        echo "  ${CYAN}[5]${RESET} pysetup- 프로젝트 셋업 (Setup)"
-        echo "  ${CYAN}[6]${RESET} pl     - 설치된 패키지 보기 (List)"
-        echo "  ${CYAN}[7]${RESET} plo    - 업데이트할 패키지 확인 (Outdated)"
-        echo "  ${CYAN}[8]${RESET} pfr    - 패키지 목록 저장 (Freeze)"
-        echo "  ${CYAN}[9]${RESET} pys    - 웹서버 실행 (Simple Server)"
-        echo "  ${CYAN}[10]${RESET} pir   - requirements.txt 설치 (Install Requirements)"
-        echo "  ${CYAN}[11]${RESET} pyv   - 설치된 Python 버전 확인 (Python Versions)"
-        echo "  ${CYAN}[12]${RESET} pyvl  - 가상환경 목록 및 상세정보 (Venv List)"
-        echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
+        echo "  ${YELLOW}[ 가상환경 ]${RESET}"
+        echo "  ${CYAN}[1]${RESET}  pv     - 가상환경 생성"
+        echo "  ${CYAN}[2]${RESET}  pa     - 가상환경 활성화"
+        echo "  ${CYAN}[3]${RESET}  pd     - 가상환경 비활성화"
+        echo "  ${CYAN}[4]${RESET}  pynew  - 새 프로젝트 시작"
+        echo "  ${CYAN}[5]${RESET}  pysetup- 프로젝트 셋업"
+        echo "  ${CYAN}[12]${RESET} pyvl   - 가상환경 목록"
+        echo ""
+        echo "  ${YELLOW}[ 패키지 ]${RESET}"
+        echo "  ${CYAN}[6]${RESET}  pl     - 설치된 패키지"
+        echo "  ${CYAN}[7]${RESET}  plo    - 업데이트할 패키지"
+        echo "  ${CYAN}[8]${RESET}  pfr    - requirements.txt 저장 (freeze)"
+        echo "  ${CYAN}[10]${RESET} pir    - requirements.txt 설치"
+        echo "  ${CYAN}[11]${RESET} pyv    - 설치된 Python 버전들"
+        echo ""
+        echo "  ${YELLOW}[ 실행 & 도구 ]${RESET}"
+        echo "  ${CYAN}[9]${RESET}  pys    - 간단 웹서버 실행"
+        echo "  ${CYAN}[13]${RESET} 🧪 pytest 실행"
+        echo "  ${CYAN}[14]${RESET} 🧹 ruff (포매터/린터)"
+        echo "  ${CYAN}[15]${RESET} 📓 Jupyter (notebook/lab)"
+        echo "  ${CYAN}[16]${RESET} 🗑  __pycache__ / .pyc 정리"
+        echo "  ${CYAN}[17]${RESET} ✨ uv 사용법 안내"
+        echo "  ${CYAN}[0]${RESET}  ⬅️  돌아가기"
         echo ""
         echo -n "  실행할 번호 > "
         read subchoice
@@ -2123,6 +2749,105 @@ function _seongmin_python() {
                     fi
                 fi
                 ;;
+            13)
+                clear
+                echo "${GREEN}🧪 pytest 실행${RESET}"
+                if ! command -v pytest &> /dev/null; then
+                    echo "${YELLOW}pytest가 설치되어 있지 않아요.${RESET}"
+                    echo -n "지금 설치할까요? (y/N): "
+                    read ans
+                    [[ "$ans" =~ ^[Yy]$ ]] && pip install pytest
+                else
+                    echo "${CYAN}옵션:${RESET}"
+                    echo "  [1] 전체 실행 (pytest)"
+                    echo "  [2] 자세한 출력 (pytest -v)"
+                    echo "  [3] 마지막 실패만 (pytest --lf)"
+                    echo "  [4] 커버리지 (pytest --cov)"
+                    echo -n "선택: "
+                    read po
+                    case $po in
+                        1) pytest ;;
+                        2) pytest -v ;;
+                        3) pytest --lf ;;
+                        4) pytest --cov ;;
+                    esac
+                fi
+                _seongmin_pause
+                ;;
+            14)
+                clear
+                echo "${GREEN}🧹 ruff (포매터/린터)${RESET}"
+                if ! command -v ruff &> /dev/null; then
+                    echo "${YELLOW}ruff가 설치되어 있지 않아요.${RESET}"
+                    echo -n "지금 설치할까요? (y/N): "
+                    read ans
+                    [[ "$ans" =~ ^[Yy]$ ]] && pip install ruff
+                else
+                    echo "  [1] 검사 (ruff check .)"
+                    echo "  [2] 자동 수정 (ruff check --fix .)"
+                    echo "  [3] 포매팅 (ruff format .)"
+                    echo -n "선택: "
+                    read ro
+                    case $ro in
+                        1) ruff check . ;;
+                        2) ruff check --fix . ;;
+                        3) ruff format . ;;
+                    esac
+                fi
+                _seongmin_pause
+                ;;
+            15)
+                clear
+                echo "${GREEN}📓 Jupyter${RESET}"
+                if ! command -v jupyter &> /dev/null; then
+                    echo "${YELLOW}jupyter 설치 필요: pip install jupyter${RESET}"
+                else
+                    echo "  [1] notebook  [2] lab"
+                    echo -n "선택: "
+                    read jo
+                    case $jo in
+                        1) jupyter notebook ;;
+                        2) jupyter lab ;;
+                    esac
+                fi
+                ;;
+            16)
+                clear
+                echo "${YELLOW}🗑  __pycache__ / .pyc 정리${RESET}"
+                local count=$(find . -type d -name '__pycache__' 2>/dev/null | wc -l | tr -d ' ')
+                echo "${CYAN}찾은 __pycache__ 디렉토리: $count 개${RESET}"
+                if [[ "$count" -gt 0 ]]; then
+                    if _seongmin_confirm_dangerous "rm -rf __pycache__"; then
+                        find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null
+                        find . -type f -name '*.pyc' -delete 2>/dev/null
+                        echo "${GREEN}✅ 정리 완료${RESET}"
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            17)
+                clear
+                echo "${MAGENTA}✨ uv — 차세대 Python 패키지 관리자${RESET}"
+                echo ""
+                if command -v uv &> /dev/null; then
+                    echo "${GREEN}✅ 설치됨: $(uv --version)${RESET}"
+                else
+                    echo "${YELLOW}설치: brew install uv${RESET}"
+                    echo "또는:  curl -LsSf https://astral.sh/uv/install.sh | sh"
+                fi
+                echo ""
+                echo "${CYAN}── 자주 쓰는 uv 명령 ──${RESET}"
+                echo "  uv init                # 새 프로젝트"
+                echo "  uv add <pkg>           # 패키지 추가 (pip install + lock)"
+                echo "  uv remove <pkg>        # 패키지 제거"
+                echo "  uv sync                # 의존성 동기화"
+                echo "  uv run <스크립트>      # venv 자동 활성화 + 실행"
+                echo "  uv pip install <pkg>   # pip 호환 모드"
+                echo "  uv venv                # venv 생성 (10배 빠름)"
+                echo ""
+                echo "${YELLOW}💡 pip보다 10~100배 빠르고, lock 파일이 자동 관리됩니다.${RESET}"
+                _seongmin_pause
+                ;;
             *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
         esac
     done
@@ -2502,29 +3227,137 @@ function _seongmin_java_kill_port() {
 
 # Homebrew 서브메뉴
 function _seongmin_brew() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+    _seongmin_check_brew || return
+
     while true; do
         clear
-        echo "${YELLOW}🍺 [ Homebrew 명령어 ]${RESET}"
+        _seongmin_header "Homebrew" "🍺"
+        echo "  ${YELLOW}[ 패키지 관리 ]${RESET}"
+        echo "  ${CYAN}[1]${RESET} 🔍 검색      (brew search)"
+        echo "  ${CYAN}[2]${RESET} 📥 설치      (brew install)"
+        echo "  ${CYAN}[3]${RESET} 🗑  제거      (brew uninstall)"
+        echo "  ${CYAN}[4]${RESET} ℹ️  정보 보기 (brew info)"
         echo ""
-        echo "  ${CYAN}[1]${RESET} bu  - brew update && upgrade"
-        echo "  ${CYAN}[2]${RESET} bl  - brew list"
-        echo "  ${CYAN}[3]${RESET} bsl - brew services list"
-        echo "  ${CYAN}[4]${RESET} bc  - brew cleanup"
-        echo "  ${CYAN}[5]${RESET} 🎨 예쁘게 보기 (Pretty List)"
+        echo "  ${YELLOW}[ 업데이트 & 정리 ]${RESET}"
+        echo "  ${CYAN}[5]${RESET} 🆙 update + upgrade"
+        echo "  ${CYAN}[6]${RESET} 📊 outdated (업데이트 가능 목록)"
+        echo "  ${CYAN}[7]${RESET} 🧹 cleanup"
+        echo "  ${CYAN}[8]${RESET} 🩺 doctor (상태 진단)"
+        echo ""
+        echo "  ${YELLOW}[ 목록 & 분석 ]${RESET}"
+        echo "  ${CYAN}[9]${RESET}  📋 list (전체)"
+        echo "  ${CYAN}[10]${RESET} 🌳 leaves (최상위 패키지만)"
+        echo "  ${CYAN}[11]${RESET} 🎨 예쁘게 보기 (Pretty List)"
+        echo "  ${CYAN}[12]${RESET} 📦 services list"
+        echo "  ${CYAN}[13]${RESET} 💾 Brewfile 생성 (bundle dump)"
+        echo ""
         echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
         echo ""
         echo -n "  실행할 번호 > "
         read subchoice
-        
+
         case $subchoice in
-            1) clear; brew update && brew upgrade; echo ""; read -k 1 ;;
-            2) clear; brew list; echo ""; read -k 1 ;;
-            3) clear; brew services list; echo ""; read -k 1 ;;
-            4) clear; brew cleanup; echo "✅ 정리 완료!"; read -k 1 ;;
-            5) _seongmin_brew_pretty_list ;;
+            1)
+                clear
+                echo "${GREEN}🔍 Brew 검색${RESET}"
+                echo -n "검색어 입력: "
+                read kw
+                [[ -z "$kw" ]] && { echo "취소됨"; sleep 1; continue; }
+                echo ""
+                echo "실행: brew search $kw"
+                echo ""
+                brew search "$kw"
+                _seongmin_pause
+                ;;
+            2)
+                clear
+                echo "${GREEN}📥 Brew 설치${RESET}"
+                echo -n "설치할 패키지 이름: "
+                read pkg
+                [[ -z "$pkg" ]] && { echo "취소됨"; sleep 1; continue; }
+                echo -n "Cask 인가요? (앱 설치) (y/N): "
+                read is_cask
+                if [[ "$is_cask" =~ ^[Yy]$ ]]; then
+                    echo "실행: brew install --cask $pkg"
+                    brew install --cask "$pkg"
+                else
+                    echo "실행: brew install $pkg"
+                    brew install "$pkg"
+                fi
+                _seongmin_pause
+                ;;
+            3)
+                clear
+                echo "${RED}🗑  Brew 제거${RESET}"
+                echo -n "제거할 패키지 이름: "
+                read pkg
+                [[ -z "$pkg" ]] && { echo "취소됨"; sleep 1; continue; }
+                if _seongmin_confirm_dangerous "brew uninstall $pkg"; then
+                    brew uninstall "$pkg"
+                fi
+                _seongmin_pause
+                ;;
+            4)
+                clear
+                echo "${GREEN}ℹ️  Brew 패키지 정보${RESET}"
+                echo -n "패키지 이름: "
+                read pkg
+                [[ -z "$pkg" ]] && { echo "취소됨"; sleep 1; continue; }
+                echo ""
+                brew info "$pkg"
+                _seongmin_pause
+                ;;
+            5)
+                clear
+                echo "${GREEN}🆙 Update + Upgrade${RESET}"
+                brew update && brew upgrade
+                _seongmin_pause
+                ;;
+            6)
+                clear
+                echo "${GREEN}📊 업데이트 가능한 패키지${RESET}"
+                local outdated=$(brew outdated)
+                if [[ -z "$outdated" ]]; then
+                    echo "${GREEN}✅ 모든 패키지가 최신 상태입니다.${RESET}"
+                else
+                    echo "$outdated"
+                    echo ""
+                    echo -n "지금 모두 업그레이드할까요? (y/N): "
+                    read ans
+                    if [[ "$ans" =~ ^[Yy]$ ]]; then
+                        brew upgrade
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            7) clear; brew cleanup; echo "${GREEN}✅ 정리 완료!${RESET}"; _seongmin_pause ;;
+            8) clear; brew doctor; _seongmin_pause ;;
+            9) clear; brew list; _seongmin_pause ;;
+            10)
+                clear
+                echo "${GREEN}🌳 최상위 패키지 (의존성 아닌 것)${RESET}"
+                echo "${CYAN}── 다른 패키지가 의존하지 않는 패키지들 ──${RESET}"
+                brew leaves
+                local count=$(brew leaves | wc -l | tr -d ' ')
+                echo ""
+                echo "${CYAN}총 ${count}개${RESET}"
+                _seongmin_pause
+                ;;
+            11) _seongmin_brew_pretty_list ;;
+            12) clear; brew services list; _seongmin_pause ;;
+            13)
+                clear
+                echo "${GREEN}💾 Brewfile 생성${RESET}"
+                echo "현재 설치된 패키지를 Brewfile로 저장합니다 (이주/백업용)"
+                echo -n "저장 경로 (기본: ./Brewfile): "
+                read path
+                [[ -z "$path" ]] && path="./Brewfile"
+                brew bundle dump --file="$path" --force
+                echo "${GREEN}✅ $path 생성됨${RESET}"
+                echo "${CYAN}복원 명령: brew bundle install --file=$path${RESET}"
+                _seongmin_pause
+                ;;
             0|q|Q) return ;;
             *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
         esac
@@ -2572,19 +3405,21 @@ function _seongmin_brew_pretty_list() {
 
 # Docker 서브메뉴
 function _seongmin_docker() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' BLUE='\033[1;34m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+    _seongmin_check_docker || return
+
     while true; do
         clear
-        echo "${CYAN}🐳 [ Docker 명령어 - 카테고리 선택 ]${RESET}"
-        echo ""
+        _seongmin_header "Docker" "🐳"
         echo "  ${GREEN}[1]${RESET} 📦 컨테이너 관리 (Container)"
         echo "  ${GREEN}[2]${RESET} 🖼️  이미지 관리 (Image)"
         echo "  ${GREEN}[3]${RESET} 🎼 Docker Compose"
         echo "  ${GREEN}[4]${RESET} 💾 볼륨 & 네트워크 (Volume & Network)"
         echo "  ${GREEN}[5]${RESET} 🔧 시스템 관리 (System)"
         echo "  ${GREEN}[6]${RESET} 📊 상태 및 버전 확인 (Status)"
+        echo "  ${GREEN}[7]${RESET} 📡 실시간 모니터링 (stats)"
+        echo "  ${GREEN}[8]${RESET} 📜 로그 따라가기 (logs -f)"
+        echo "  ${GREEN}[9]${RESET} 💻 컨테이너 진입 (exec sh)"
         echo "  ${CYAN}[0]${RESET} ⬅️  메인 메뉴로"
         echo ""
         echo -n "  선택 > "
@@ -2597,6 +3432,36 @@ function _seongmin_docker() {
             4) _seongmin_docker_volume_network ;;
             5) _seongmin_docker_system ;;
             6) _seongmin_docker_check ;;
+            7)
+                clear
+                echo "${CYAN}📡 docker stats (Ctrl+C로 종료)${RESET}"
+                docker stats
+                ;;
+            8)
+                clear
+                echo "${CYAN}📜 컨테이너 로그 따라가기${RESET}"
+                docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}"
+                echo ""
+                echo -n "컨테이너 이름 또는 ID: "
+                read cname
+                [[ -z "$cname" ]] && continue
+                echo "실행: docker logs -f --tail 100 $cname (Ctrl+C로 종료)"
+                docker logs -f --tail 100 "$cname"
+                ;;
+            9)
+                clear
+                echo "${CYAN}💻 컨테이너 진입${RESET}"
+                docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}"
+                echo ""
+                echo -n "컨테이너 이름 또는 ID: "
+                read cname
+                [[ -z "$cname" ]] && continue
+                echo -n "셸 (기본 sh, 예: bash): "
+                read shell_type
+                [[ -z "$shell_type" ]] && shell_type="sh"
+                echo "실행: docker exec -it $cname $shell_type"
+                docker exec -it "$cname" "$shell_type"
+                ;;
             0|q|Q) return ;;
             *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
         esac
@@ -3440,27 +4305,79 @@ function _seongmin_docker_check() {
 
 # Redis 서브메뉴
 function _seongmin_redis() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+
+    # OS별 시작/중지 명령
+    local start_cmd stop_cmd restart_cmd
+    if _seongmin_is_macos && command -v brew &> /dev/null; then
+        start_cmd="brew services start redis"
+        stop_cmd="brew services stop redis"
+        restart_cmd="brew services restart redis"
+    else
+        start_cmd="sudo systemctl start redis"
+        stop_cmd="sudo systemctl stop redis"
+        restart_cmd="sudo systemctl restart redis"
+    fi
+
     while true; do
         clear
-        echo "${RED}🔴 [ Redis 명령어 ]${RESET}"
+        _seongmin_header "Redis" "🔴"
+        echo "  ${YELLOW}[ 서비스 관리 ]${RESET}"
+        echo "  ${CYAN}[1]${RESET} 시작        (${start_cmd})"
+        echo "  ${CYAN}[2]${RESET} 중지        (${stop_cmd})"
+        echo "  ${CYAN}[3]${RESET} 재시작      (${restart_cmd})"
         echo ""
-        echo "  ${CYAN}[1]${RESET} rs  - brew services start redis"
-        echo "  ${CYAN}[2]${RESET} rst - brew services stop redis"
-        echo "  ${CYAN}[3]${RESET} rc  - redis-cli"
-        echo "  ${CYAN}[4]${RESET} 🧐 상태 및 버전 확인 (Check Status & Update)"
+        echo "  ${YELLOW}[ 연결 & 진단 ]${RESET}"
+        echo "  ${CYAN}[4]${RESET} 🏓 PING 테스트 (redis-cli ping)"
+        echo "  ${CYAN}[5]${RESET} 💻 redis-cli 진입"
+        echo "  ${CYAN}[6]${RESET} 🧐 상태 및 버전 확인"
+        echo ""
+        echo "  ${YELLOW}[ 데이터 조회 ]${RESET}"
+        echo "  ${CYAN}[7]${RESET} 🔑 KEYS * (모든 키, 운영DB 주의)"
+        echo "  ${CYAN}[8]${RESET} 📏 DBSIZE (키 개수)"
+        echo "  ${CYAN}[9]${RESET} 📊 INFO memory (메모리 정보)"
+        echo "  ${CYAN}[10]${RESET} 🚨 FLUSHDB (현재 DB 비우기 - 위험!)"
+        echo ""
         echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
         echo ""
         echo -n "  실행할 번호 > "
         read subchoice
-        
+
         case $subchoice in
-            1) clear; brew services start redis; echo ""; read -k 1 ;;
-            2) clear; brew services stop redis; echo ""; read -k 1 ;;
-            3) clear; echo "redis-cli 실행 (exit로 나가기)"; redis-cli ;;
-            4) _seongmin_redis_check ;;
+            1) clear; eval "$start_cmd"; _seongmin_pause ;;
+            2) clear; eval "$stop_cmd"; _seongmin_pause ;;
+            3) clear; eval "$restart_cmd"; _seongmin_pause ;;
+            4)
+                clear
+                echo "${GREEN}🏓 Redis PING 테스트${RESET}"
+                local result=$(redis-cli ping 2>&1)
+                if [[ "$result" == "PONG" ]]; then
+                    echo "${GREEN}✅ PONG — Redis 연결 정상!${RESET}"
+                else
+                    echo "${RED}❌ 응답 실패: $result${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            5) clear; echo "${CYAN}redis-cli (exit로 나가기)${RESET}"; redis-cli ;;
+            6) _seongmin_redis_check ;;
+            7)
+                clear
+                echo "${YELLOW}🔑 모든 키 조회${RESET}"
+                echo "${RED}⚠️  운영 DB에서는 KEYS * 사용 자제! (SCAN 권장)${RESET}"
+                echo ""
+                redis-cli KEYS '*'
+                _seongmin_pause
+                ;;
+            8) clear; echo "${GREEN}📏 DBSIZE${RESET}"; redis-cli DBSIZE; _seongmin_pause ;;
+            9) clear; redis-cli INFO memory; _seongmin_pause ;;
+            10)
+                clear
+                if _seongmin_confirm_dangerous "redis-cli FLUSHDB"; then
+                    redis-cli FLUSHDB
+                    echo "${GREEN}✅ FLUSHDB 완료${RESET}"
+                fi
+                _seongmin_pause
+                ;;
             0|q|Q) return ;;
             *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
         esac
@@ -3543,107 +4460,304 @@ function _seongmin_redis_check() {
 
 # Shell 서브메뉴
 function _seongmin_shell() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+
     while true; do
         clear
-        echo "${PINK}🐚 [ Shell 명령어 ]${RESET}"
+        _seongmin_header "Shell" "🐚"
+        echo "  ${YELLOW}[ 설정 ]${RESET}"
+        echo "  ${CYAN}[1]${RESET}  🔄 ~/.zshrc 새로고침"
+        echo "  ${CYAN}[2]${RESET}  📝 ~/.zshrc 편집"
+        echo "  ${CYAN}[3]${RESET}  📝 ~/.bashrc 편집"
+        echo "  ${CYAN}[4]${RESET}  💾 dotfile 백업 (~/.zshrc, ~/.bashrc 등)"
         echo ""
-        echo "  ${CYAN}[1]${RESET} sz     - 설정 새로고침 (reload)"
-        echo "  ${CYAN}[2]${RESET} zshrc  - code ~/.zshrc"
-        echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
+        echo "  ${YELLOW}[ 환경 정보 ]${RESET}"
+        echo "  ${CYAN}[5]${RESET}  🛣  PATH 예쁘게 보기"
+        echo "  ${CYAN}[6]${RESET}  🏷  alias 목록"
+        echo "  ${CYAN}[7]${RESET}  🌍 환경변수 검색 (env grep)"
+        echo "  ${CYAN}[8]${RESET}  📜 history 검색"
+        echo "  ${CYAN}[9]${RESET}  🐚 현재 셸 정보"
+        echo ""
+        echo "  ${YELLOW}[ 도구 ]${RESET}"
+        echo "  ${CYAN}[10]${RESET} 🌟 oh-my-zsh 업데이트"
+        echo "  ${CYAN}[11]${RESET} ⚙️  로그인 셸 변경 (chsh)"
+        echo "  ${CYAN}[0]${RESET}  ⬅️  돌아가기"
         echo ""
         echo -n "  실행할 번호 > "
-        read subchoice
-        
-        case $subchoice in
-            1) clear; source ~/.zshrc; echo "✅ 설정 새로고침 완료!"; read -k 1 ;;
-            2) code ~/.zshrc; return ;;
+        read sub
+
+        case $sub in
+            1) clear; source ~/.zshrc 2>/dev/null && echo "${GREEN}✅ 새로고침 완료${RESET}" || echo "${RED}오류 발생${RESET}"; _seongmin_pause ;;
+            2) ${EDITOR:-vi} ~/.zshrc ;;
+            3) ${EDITOR:-vi} ~/.bashrc ;;
+            4)
+                clear
+                local backup_dir="$HOME/.dotfile_backup_$(date +%Y%m%d_%H%M%S)"
+                mkdir -p "$backup_dir"
+                for f in .zshrc .bashrc .profile .vimrc .gitconfig .ssh/config; do
+                    [[ -f "$HOME/$f" ]] && cp "$HOME/$f" "$backup_dir/" 2>/dev/null
+                done
+                echo "${GREEN}✅ 백업 완료: $backup_dir${RESET}"
+                ls -la "$backup_dir"
+                _seongmin_pause
+                ;;
+            5)
+                clear
+                echo "${GREEN}🛣 PATH 분석${RESET}"
+                echo "$PATH" | tr ':' '\n' | nl
+                _seongmin_pause
+                ;;
+            6)
+                clear
+                echo -n "검색어 (비우면 전체): "
+                read kw
+                if [[ -z "$kw" ]]; then
+                    alias | head -50
+                    echo ""
+                    echo "${YELLOW}(상위 50개만 표시)${RESET}"
+                else
+                    alias | grep -i "$kw"
+                fi
+                _seongmin_pause
+                ;;
+            7)
+                clear
+                echo -n "검색어: "
+                read kw
+                [[ -z "$kw" ]] && continue
+                env | grep -i "$kw"
+                _seongmin_pause
+                ;;
+            8)
+                clear
+                echo -n "검색어: "
+                read kw
+                [[ -z "$kw" ]] && continue
+                history 1 | grep -i "$kw" | tail -30
+                _seongmin_pause
+                ;;
+            9)
+                clear
+                echo "${GREEN}🐚 현재 셸 정보${RESET}"
+                echo "  SHELL:      $SHELL"
+                echo "  ZSH_VERSION: ${ZSH_VERSION:-N/A}"
+                echo "  BASH_VERSION: ${BASH_VERSION:-N/A}"
+                echo "  TERM:       $TERM"
+                echo "  USER:       $USER"
+                echo "  HOME:       $HOME"
+                _seongmin_pause
+                ;;
+            10)
+                clear
+                if [[ -d "$HOME/.oh-my-zsh" ]]; then
+                    "$HOME/.oh-my-zsh/tools/upgrade.sh"
+                else
+                    echo "${YELLOW}oh-my-zsh가 설치되어 있지 않습니다.${RESET}"
+                    echo "설치: sh -c \"\$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\""
+                fi
+                _seongmin_pause
+                ;;
+            11)
+                clear
+                echo "${YELLOW}⚙️  로그인 셸 변경${RESET}"
+                echo "현재 셸: $SHELL"
+                echo "사용 가능: $(cat /etc/shells | grep -v '^#')"
+                echo ""
+                echo -n "변경할 셸 경로 (예: /bin/zsh, 빈 줄로 취소): "
+                read newshell
+                [[ -n "$newshell" ]] && chsh -s "$newshell"
+                _seongmin_pause
+                ;;
             0|q|Q) return ;;
-            *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
+            *) echo "${RED}잘못된 번호${RESET}"; sleep 1 ;;
         esac
     done
 }
 
 # 버전 확인 서브메뉴
 function _seongmin_version() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+
+    # 헬퍼: 버전 출력
+    _vline() {
+        local label="$1"
+        local cmd="$2"
+        printf "   %-13s " "$label"
+        eval "$cmd" 2>/dev/null || echo "${RED}❌ 설치 안됨${RESET}"
+    }
+
     clear
-    echo "${CYAN}�� [ 설치된 버전 정보 ]${RESET}"
-    echo ""
+    _seongmin_header "설치된 버전 정보" "🔍"
     echo "${YELLOW}[ 언어 & 런타임 ]${RESET}"
-    echo -n "   Python:  "; python3 --version 2>/dev/null || echo "❌ 설치 안됨"
-    echo -n "   Node.js: "; node --version 2>/dev/null || echo "❌ 설치 안됨"
-    echo -n "   Java:    "; java --version 2>&1 | head -1 || echo "❌ 설치 안됨"
+    _vline "Python:"  "python3 --version"
+    _vline "Node.js:" "node --version"
+    _vline "Java:"    "java --version 2>&1 | head -1"
+    _vline "Go:"      "go version"
+    _vline "Rust:"    "rustc --version"
+    _vline "Ruby:"    "ruby --version"
+    _vline "PHP:"     "php --version 2>&1 | head -1"
+    _vline "Bun:"     "bun --version"
+    _vline "Deno:"    "deno --version 2>&1 | head -1"
     echo ""
     echo "${GREEN}[ 패키지 관리자 ]${RESET}"
-    echo -n "   pip:      "; pip3 --version 2>/dev/null | awk '{print $2}' || echo "❌ 설치 안됨"
-    echo -n "   npm:      "; npm --version 2>/dev/null || echo "❌ 설치 안됨"
-    echo -n "   Homebrew: "; brew --version 2>/dev/null | head -1 || echo "❌ 설치 안됨"
+    _vline "pip:"      "pip3 --version | awk '{print \$2}'"
+    _vline "uv:"       "uv --version"
+    _vline "npm:"      "npm --version"
+    _vline "yarn:"     "yarn --version"
+    _vline "pnpm:"     "pnpm --version"
+    _vline "Homebrew:" "brew --version | head -1"
+    _vline "cargo:"    "cargo --version"
     echo ""
-    echo "${CYAN}[ 개발 도구 ]${RESET}"
-    echo -n "   Git:    "; git --version 2>/dev/null || echo "❌ 설치 안됨"
-    echo -n "   Docker: "; docker --version 2>/dev/null || echo "❌ 설치 안됨"
-    echo -n "   Redis:  "; redis-server --version 2>/dev/null | awk '{print $3}' || echo "❌ 설치 안됨"
+    echo "${CYAN}[ 개발 & 인프라 도구 ]${RESET}"
+    _vline "Git:"        "git --version"
+    _vline "gh (GitHub):" "gh --version | head -1"
+    _vline "Docker:"     "docker --version"
+    _vline "kubectl:"    "kubectl version --client --short 2>/dev/null || kubectl version --client 2>&1 | head -1"
+    _vline "terraform:"  "terraform version | head -1"
+    _vline "aws:"        "aws --version 2>&1"
+    _vline "gcloud:"     "gcloud --version 2>&1 | head -1"
+    _vline "Redis:"      "redis-server --version | awk '{print \$3}'"
+    _vline "PostgreSQL:" "psql --version"
+    _vline "MySQL:"      "mysql --version"
     echo ""
-    echo "${PINK}[ 쉘 ]${RESET}"
-    echo -n "   Zsh:    "; zsh --version 2>/dev/null || echo "❌ 설치 안됨"
+    echo "${PINK}[ 셸 ]${RESET}"
+    _vline "Zsh:"  "zsh --version"
+    _vline "Bash:" "bash --version | head -1"
+    _vline "fish:" "fish --version"
     echo ""
-    echo "${YELLOW}아무 키나 누르면 돌아가요...${RESET}"
-    read -k 1
+    _seongmin_pause
 }
 
 # 프론트엔드 서브메뉴
 function _seongmin_frontend() {
-    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
-    local GREEN='\033[1;32m' RED='\033[1;31m' RESET='\033[0m'
-    
+    _seongmin_init_colors
+
+    # 패키지 매니저 자동 감지 (현재 프로젝트 기준)
+    local pm="npm"
+    if [[ -f "bun.lockb" ]]; then pm="bun"
+    elif [[ -f "pnpm-lock.yaml" ]]; then pm="pnpm"
+    elif [[ -f "yarn.lock" ]]; then pm="yarn"
+    fi
+
     while true; do
         clear
-        echo "${PINK}🎨 [ 프론트엔드 프로젝트 생성 ]${RESET}"
+        _seongmin_header "Frontend (감지된 PM: $pm)" "🎨"
+        echo "  ${YELLOW}[ 프로젝트 생성 ]${RESET}"
+        echo "  ${CYAN}[1]${RESET}  ⚡ Vite (React/Vue/Svelte/Solid 등)"
+        echo "  ${CYAN}[2]${RESET}  ▲  Next.js"
+        echo "  ${CYAN}[3]${RESET}  🚀 Astro (Content sites)"
+        echo "  ${CYAN}[4]${RESET}  💚 Nuxt (Vue)"
+        echo "  ${CYAN}[5]${RESET}  🎵 SvelteKit"
+        echo "  ${CYAN}[6]${RESET}  🎸 Remix"
+        echo "  ${CYAN}[7]${RESET}  ⚛️  Create React App ${RED}(Deprecated)${RESET}"
         echo ""
-        echo "  ${CYAN}[1]${RESET} vite    - Vite 프로젝트 생성 (React, Vue, Svelte 등)"
-        echo "  ${CYAN}[2]${RESET} next    - Next.js 프로젝트 생성"
-        echo "  ${CYAN}[3]${RESET} react   - React (CRA) 프로젝트 생성 (Legacy)"
+        echo "  ${YELLOW}[ 일상 명령 (현재 프로젝트) ]${RESET}"
+        echo "  ${CYAN}[8]${RESET}  📜 package.json scripts 보기"
+        echo "  ${CYAN}[9]${RESET}  🚀 dev 실행 ($pm run dev)"
+        echo "  ${CYAN}[10]${RESET} 🏗  build ($pm run build)"
+        echo "  ${CYAN}[11]${RESET} ✅ test ($pm test 또는 run test)"
+        echo "  ${CYAN}[12]${RESET} 🧹 lint ($pm run lint)"
+        echo "  ${CYAN}[13]${RESET} 📥 install (의존성 설치)"
+        echo ""
+        echo "  ${YELLOW}[ 정리 & 도구 ]${RESET}"
+        echo "  ${CYAN}[14]${RESET} 🗑  node_modules 삭제 + 재설치"
+        echo "  ${CYAN}[15]${RESET} 🔄 패키지 매니저 변경 (npm/yarn/pnpm/bun)"
+        echo ""
         echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
         echo ""
         echo -n "  실행할 번호 > "
         read subchoice
-        
+
         case $subchoice in
-            1) 
+            1)
                 clear
-                echo "${YELLOW}⚡ Vite 프로젝트를 생성합니다...${RESET}"
-                echo "명령어: npm create vite@latest"
-                npm create vite@latest
-                echo ""
-                echo "✅ 완료되면 cd <project-name> && npm install && npm run dev 하세요!"
-                read -k 1 
-                ;;
-            2) 
-                clear
-                echo "${YELLOW}▲ Next.js 프로젝트를 생성합니다...${RESET}"
-                echo "명령어: npx create-next-app@latest"
-                npx create-next-app@latest
-                echo ""
-                read -k 1 
-                ;;
-            3) 
-                clear
-                echo "${YELLOW}⚛️ Create React App으로 프로젝트를 생성합니다...${RESET}"
-                echo "명령어: npx create-react-app"
-                echo -n "프로젝트 이름 입력: "
-                read proj_name
-                if [[ -n "$proj_name" ]]; then
-                    npx create-react-app "$proj_name"
+                echo "${YELLOW}⚡ Vite 프로젝트 생성${RESET}"
+                if [[ "$pm" == "bun" ]]; then
+                    bun create vite
+                elif [[ "$pm" == "pnpm" ]]; then
+                    pnpm create vite
+                elif [[ "$pm" == "yarn" ]]; then
+                    yarn create vite
                 else
-                    echo "${RED}프로젝트 이름을 입력해야 합니다.${RESET}"
+                    npm create vite@latest
                 fi
+                _seongmin_pause
+                ;;
+            2) clear; npx create-next-app@latest; _seongmin_pause ;;
+            3) clear; npm create astro@latest; _seongmin_pause ;;
+            4) clear; npx nuxi@latest init; _seongmin_pause ;;
+            5) clear; npm create svelte@latest; _seongmin_pause ;;
+            6) clear; npx create-remix@latest; _seongmin_pause ;;
+            7)
+                clear
+                echo "${RED}⚠️  Create React App은 React 공식이 더 이상 권장하지 않습니다.${RESET}"
+                echo "${YELLOW}대안: Vite + React (메뉴 1번) 또는 Next.js (메뉴 2번)${RESET}"
                 echo ""
-                read -k 1 
+                echo -n "그래도 진행할까요? (y/N): "
+                read ans
+                if [[ "$ans" =~ ^[Yy]$ ]]; then
+                    echo -n "프로젝트 이름: "
+                    read proj_name
+                    [[ -n "$proj_name" ]] && npx create-react-app "$proj_name"
+                fi
+                _seongmin_pause
+                ;;
+            8)
+                clear
+                if [[ -f "package.json" ]]; then
+                    echo "${GREEN}📜 package.json scripts:${RESET}"
+                    if command -v jq &> /dev/null; then
+                        jq -r '.scripts | to_entries[] | "  \(.key): \(.value)"' package.json
+                    else
+                        grep -A 50 '"scripts"' package.json | sed -n '/{/,/}/p' | head -30
+                    fi
+                else
+                    echo "${RED}❌ 현재 디렉토리에 package.json이 없습니다.${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            9)  clear; echo "▶ $pm run dev"; $pm run dev ;;
+            10) clear; echo "▶ $pm run build"; $pm run build; _seongmin_pause ;;
+            11)
+                clear
+                if [[ "$pm" == "npm" || "$pm" == "yarn" ]]; then
+                    $pm test
+                else
+                    $pm run test
+                fi
+                _seongmin_pause
+                ;;
+            12) clear; $pm run lint; _seongmin_pause ;;
+            13) clear; $pm install; _seongmin_pause ;;
+            14)
+                clear
+                echo "${RED}🗑  node_modules 삭제 + 재설치${RESET}"
+                if [[ -d "node_modules" ]]; then
+                    if _seongmin_confirm_dangerous "rm -rf node_modules"; then
+                        rm -rf node_modules
+                        echo "${YELLOW}🔄 재설치 중...${RESET}"
+                        $pm install
+                        echo "${GREEN}✅ 완료${RESET}"
+                    fi
+                else
+                    echo "${YELLOW}node_modules가 없습니다.${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            15)
+                clear
+                echo "${YELLOW}패키지 매니저 선택:${RESET}"
+                echo "  [1] npm   [2] yarn   [3] pnpm   [4] bun"
+                echo -n "선택 > "
+                read pm_choice
+                case $pm_choice in
+                    1) pm="npm" ;;
+                    2) pm="yarn" ;;
+                    3) pm="pnpm" ;;
+                    4) pm="bun" ;;
+                esac
+                echo "${GREEN}✅ 현재 패키지 매니저: $pm${RESET}"
+                _seongmin_pause
                 ;;
             0|q|Q) return ;;
             *) echo "${RED}  잘못된 번호! 😅${RESET}"; sleep 1 ;;
@@ -4233,7 +5347,7 @@ function _seongmin_jenkins_plugin() {
         echo "      설명: 새 플러그인을 설치합니다."
         echo ""
         echo "  ${GREEN}[3]${RESET} 업데이트 가능한 플러그인 확인"
-        echo "      ${YELLOW}→ java -jar jenkins-cli.jar -s http://localhost:8080/ list-plugins | grep -v "(" | awk '{ print \$1 }'${RESET}"
+        echo "      ${YELLOW}→ java -jar jenkins-cli.jar -s http://localhost:8080/ list-plugins | grep -v '(' | awk '{ print \$1 }'${RESET}"
         echo "      설명: 업데이트가 필요한 플러그인을 확인합니다."
         echo ""
         echo "  ${GREEN}[4]${RESET} 안전한 재시작 (플러그인 적용)"
@@ -4330,3 +5444,775 @@ function _seongmin_jenkins_plugin() {
     done
 }
 
+# Claude Code 서브메뉴
+function _seongmin_claude() {
+    local PINK='\033[1;35m' CYAN='\033[1;36m' YELLOW='\033[1;33m'
+    local GREEN='\033[1;32m' RED='\033[1;31m' BLUE='\033[1;34m' RESET='\033[0m'
+    
+    while true; do
+        clear
+        echo "${PINK}🤖 [ Claude Code 명령어 ]${RESET}"
+        echo ""
+        echo "  ${GREEN}[1]${RESET} 🆙 Claude Code 업그레이드"
+        echo "      ${YELLOW}→ brew upgrade claude-code${RESET}"
+        echo "      설명: Homebrew를 통해 Claude Code를 최신 버전으로 업그레이드합니다."
+        echo ""
+        echo "  ${GREEN}[2]${RESET} 📋 현재 버전 확인"
+        echo "      ${YELLOW}→ claude --version${RESET}"
+        echo "      설명: 설치된 Claude Code의 현재 버전을 확인합니다."
+        echo ""
+        echo "  ${GREEN}[3]${RESET} 🔍 Homebrew 패키지 정보"
+        echo "      ${YELLOW}→ brew info claude-code${RESET}"
+        echo "      설명: Claude Code 패키지 정보와 설치 경로를 확인합니다."
+        echo ""
+        echo "  ${GREEN}[4]${RESET} 🩺 Claude 상태 확인"
+        echo "      ${YELLOW}→ claude doctor${RESET}"
+        echo "      설명: Claude Code 설치 상태 및 문제를 진단합니다."
+        echo ""
+        echo "  ${GREEN}[5]${RESET} 🚀 Claude Code 실행"
+        echo "      ${YELLOW}→ claude${RESET}"
+        echo "      설명: Claude Code를 실행합니다."
+        echo ""
+        echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
+        echo ""
+        echo -n "  선택 > "
+        read sub
+        
+        case $sub in
+            1) 
+                clear
+                echo "${GREEN}🆙 Claude Code 업그레이드${RESET}"
+                echo "실행 명령어: brew upgrade claude-code"
+                echo ""
+                brew upgrade claude-code
+                echo ""
+                echo "${GREEN}✅ 업그레이드 완료!${RESET}"
+                echo ""
+                read -k 1 
+                ;;
+            2) 
+                clear
+                echo "${GREEN}📋 Claude Code 버전 확인${RESET}"
+                echo "실행 명령어: claude --version"
+                echo ""
+                claude --version
+                echo ""
+                read -k 1 
+                ;;
+            3) 
+                clear
+                echo "${GREEN}🔍 Homebrew 패키지 정보${RESET}"
+                echo "실행 명령어: brew info claude-code"
+                echo ""
+                brew info claude-code
+                echo ""
+                read -k 1 
+                ;;
+            4) 
+                clear
+                echo "${GREEN}🩺 Claude 상태 확인${RESET}"
+                echo "실행 명령어: claude doctor"
+                echo ""
+                claude doctor
+                echo ""
+                read -k 1 
+                ;;
+            5) 
+                clear
+                echo "${GREEN}🚀 Claude Code 실행${RESET}"
+                echo "실행 명령어: claude"
+                echo ""
+                claude
+                echo ""
+                read -k 1 
+                ;;
+            0|q|Q) return ;;
+            *) echo "${RED}잘못된 선택입니다.${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🔐 SSH 키 관리 (메뉴 12 - 신규)
+# ═══════════════════════════════════════════════════════════════
+function _seongmin_ssh() {
+    _seongmin_init_colors
+
+    while true; do
+        clear
+        _seongmin_header "SSH 키 관리" "🔐"
+        echo "  ${CYAN}[1]${RESET}  📋 내 SSH 키 목록 (~/.ssh)"
+        echo "  ${CYAN}[2]${RESET}  🆕 새 SSH 키 생성 (ssh-keygen ed25519)"
+        echo "  ${CYAN}[3]${RESET}  📤 공개키 클립보드 복사"
+        echo "  ${CYAN}[4]${RESET}  🔌 ssh-agent에 키 추가 (ssh-add)"
+        echo "  ${CYAN}[5]${RESET}  📜 ssh-agent에 등록된 키 보기 (ssh-add -l)"
+        echo "  ${CYAN}[6]${RESET}  🚀 원격 서버에 공개키 복사 (ssh-copy-id)"
+        echo "  ${CYAN}[7]${RESET}  ⚙️  ~/.ssh/config 편집"
+        echo "  ${CYAN}[8]${RESET}  🧪 SSH 연결 테스트 (ssh -T git@github.com)"
+        echo "  ${CYAN}[9]${RESET}  🔍 known_hosts 확인"
+        echo "  ${CYAN}[0]${RESET}  ⬅️  돌아가기"
+        echo ""
+        echo -n "  실행할 번호 > "
+        read sub
+
+        case $sub in
+            1)
+                clear
+                echo "${GREEN}📋 ~/.ssh 파일 목록${RESET}"
+                if [[ -d "$HOME/.ssh" ]]; then
+                    ls -la "$HOME/.ssh"
+                else
+                    echo "${YELLOW}~/.ssh 디렉토리가 없습니다.${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            2)
+                clear
+                echo "${GREEN}🆕 새 SSH 키 생성 (ed25519 권장)${RESET}"
+                echo -n "이메일 주소 입력: "
+                read email
+                [[ -z "$email" ]] && { echo "취소됨"; sleep 1; continue; }
+                echo -n "키 파일 이름 (기본: id_ed25519): "
+                read keyname
+                [[ -z "$keyname" ]] && keyname="id_ed25519"
+                ssh-keygen -t ed25519 -C "$email" -f "$HOME/.ssh/$keyname"
+                echo ""
+                echo "${GREEN}✅ ~/.ssh/$keyname 생성됨${RESET}"
+                echo "${CYAN}공개키: ~/.ssh/${keyname}.pub${RESET}"
+                _seongmin_pause
+                ;;
+            3)
+                clear
+                echo "${GREEN}📤 공개키 클립보드 복사${RESET}"
+                local pubs=("$HOME"/.ssh/*.pub)
+                if [[ ! -e "${pubs[1]}" ]]; then
+                    echo "${RED}공개키 파일이 없습니다.${RESET}"
+                    _seongmin_pause; continue
+                fi
+                local idx=1
+                for p in "${pubs[@]}"; do
+                    echo "  [$idx] $(basename "$p")"
+                    ((idx++))
+                done
+                echo -n "선택: "
+                read pick
+                local target="${pubs[$pick]}"
+                if [[ -f "$target" ]]; then
+                    if _seongmin_is_macos; then
+                        pbcopy < "$target"
+                        echo "${GREEN}✅ 클립보드에 복사됨 ($(basename $target))${RESET}"
+                    elif command -v xclip &> /dev/null; then
+                        xclip -sel clip < "$target"
+                        echo "${GREEN}✅ 클립보드에 복사됨${RESET}"
+                    else
+                        echo "${YELLOW}클립보드 도구 없음. 내용:${RESET}"
+                        cat "$target"
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            4)
+                clear
+                echo "${GREEN}🔌 ssh-add${RESET}"
+                ls "$HOME"/.ssh/id_* 2>/dev/null | grep -v ".pub"
+                echo -n "추가할 키 경로 (기본: ~/.ssh/id_ed25519): "
+                read kpath
+                [[ -z "$kpath" ]] && kpath="$HOME/.ssh/id_ed25519"
+                if _seongmin_is_macos; then
+                    ssh-add --apple-use-keychain "$kpath"
+                else
+                    ssh-add "$kpath"
+                fi
+                _seongmin_pause
+                ;;
+            5) clear; echo "${GREEN}📜 ssh-agent 등록된 키${RESET}"; ssh-add -l; _seongmin_pause ;;
+            6)
+                clear
+                echo "${GREEN}🚀 ssh-copy-id (원격에 공개키 복사)${RESET}"
+                echo -n "원격 (예: user@host): "
+                read remote
+                [[ -z "$remote" ]] && { echo "취소됨"; sleep 1; continue; }
+                ssh-copy-id "$remote"
+                _seongmin_pause
+                ;;
+            7)
+                clear
+                [[ ! -f "$HOME/.ssh/config" ]] && touch "$HOME/.ssh/config"
+                ${EDITOR:-vi} "$HOME/.ssh/config"
+                ;;
+            8)
+                clear
+                echo "${GREEN}🧪 SSH 연결 테스트${RESET}"
+                echo -n "테스트 대상 (기본: git@github.com): "
+                read host
+                [[ -z "$host" ]] && host="git@github.com"
+                ssh -T "$host"
+                _seongmin_pause
+                ;;
+            9)
+                clear
+                echo "${GREEN}🔍 known_hosts${RESET}"
+                if [[ -f "$HOME/.ssh/known_hosts" ]]; then
+                    wc -l "$HOME/.ssh/known_hosts"
+                    echo ""
+                    head -20 "$HOME/.ssh/known_hosts"
+                fi
+                _seongmin_pause
+                ;;
+            0|q|Q) return ;;
+            *) echo "${RED}잘못된 선택${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 🌐 Network 진단 (메뉴 13 - 신규)
+# ═══════════════════════════════════════════════════════════════
+function _seongmin_network() {
+    _seongmin_init_colors
+
+    while true; do
+        clear
+        _seongmin_header "Network 진단" "🌐"
+        echo "  ${CYAN}[1]${RESET}  🏓 ping (응답 속도 측정)"
+        echo "  ${CYAN}[2]${RESET}  🔍 dig (DNS 조회)"
+        echo "  ${CYAN}[3]${RESET}  🌐 curl로 응답 확인"
+        echo "  ${CYAN}[4]${RESET}  🔌 포트 점유 확인 (lsof -i :PORT)"
+        echo "  ${CYAN}[5]${RESET}  🚪 열린 포트 전체 목록"
+        echo "  ${CYAN}[6]${RESET}  📡 내 공인 IP 확인"
+        echo "  ${CYAN}[7]${RESET}  🏠 내 로컬 IP 확인"
+        echo "  ${CYAN}[8]${RESET}  🛣  traceroute (경로 추적)"
+        echo "  ${CYAN}[9]${RESET}  📊 네트워크 인터페이스"
+        echo "  ${CYAN}[10]${RESET} 🚦 SSL 인증서 만료일 확인"
+        echo "  ${CYAN}[0]${RESET}  ⬅️  돌아가기"
+        echo ""
+        echo -n "  실행할 번호 > "
+        read sub
+
+        case $sub in
+            1)
+                clear
+                echo -n "ping 대상 (기본: google.com): "
+                read host
+                [[ -z "$host" ]] && host="google.com"
+                ping -c 4 "$host"
+                _seongmin_pause
+                ;;
+            2)
+                clear
+                echo -n "도메인: "
+                read d
+                [[ -z "$d" ]] && continue
+                if command -v dig &> /dev/null; then
+                    dig +short "$d"
+                    echo "---"
+                    dig "$d" | head -30
+                else
+                    nslookup "$d"
+                fi
+                _seongmin_pause
+                ;;
+            3)
+                clear
+                echo -n "URL: "
+                read url
+                [[ -z "$url" ]] && continue
+                echo "${CYAN}── 헤더 ──${RESET}"
+                curl -sI "$url"
+                echo ""
+                echo "${CYAN}── 응답 시간 ──${RESET}"
+                curl -s -o /dev/null -w "DNS: %{time_namelookup}s\nConnect: %{time_connect}s\nTotal: %{time_total}s\nStatus: %{http_code}\n" "$url"
+                _seongmin_pause
+                ;;
+            4)
+                clear
+                echo -n "포트 번호: "
+                read port
+                [[ -z "$port" ]] && continue
+                if lsof -i ":$port" 2>/dev/null; then
+                    echo ""
+                    echo "${YELLOW}💡 프로세스 종료: kill -9 <PID>${RESET}"
+                else
+                    echo "${GREEN}✅ 포트 $port 는 비어있습니다.${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            5)
+                clear
+                if _seongmin_is_macos; then
+                    netstat -an -p tcp | grep LISTEN | head -30
+                else
+                    ss -tuln 2>/dev/null || netstat -tuln 2>/dev/null
+                fi
+                _seongmin_pause
+                ;;
+            6)
+                clear
+                echo -n "${GREEN}공인 IP: ${RESET}"
+                curl -s https://ifconfig.me
+                echo ""
+                _seongmin_pause
+                ;;
+            7)
+                clear
+                if _seongmin_is_macos; then
+                    ipconfig getifaddr en0 2>/dev/null
+                    ipconfig getifaddr en1 2>/dev/null
+                else
+                    hostname -I 2>/dev/null || ip addr show | grep "inet " | grep -v 127.0.0.1
+                fi
+                _seongmin_pause
+                ;;
+            8)
+                clear
+                echo -n "대상: "
+                read t
+                [[ -z "$t" ]] && continue
+                traceroute "$t"
+                _seongmin_pause
+                ;;
+            9)
+                clear
+                if _seongmin_is_macos; then
+                    ifconfig | head -50
+                else
+                    ip addr 2>/dev/null || ifconfig
+                fi
+                _seongmin_pause
+                ;;
+            10)
+                clear
+                echo -n "도메인 (기본: google.com): "
+                read d
+                [[ -z "$d" ]] && d="google.com"
+                echo | openssl s_client -servername "$d" -connect "$d":443 2>/dev/null | \
+                    openssl x509 -noout -dates -subject
+                _seongmin_pause
+                ;;
+            0|q|Q) return ;;
+            *) echo "${RED}잘못된 선택${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 🆕 새 프로젝트 시작 (메뉴 14 - 신규)
+# ═══════════════════════════════════════════════════════════════
+function _seongmin_newproject() {
+    _seongmin_init_colors
+
+    clear
+    _seongmin_header "새 프로젝트 시작" "🆕"
+    echo "  ${YELLOW}프로젝트 종류를 선택해주세요:${RESET}"
+    echo "  ${CYAN}[1]${RESET} 🐍 Python"
+    echo "  ${CYAN}[2]${RESET} 🎨 Frontend (Vite/Next/Astro 등 → Frontend 메뉴)"
+    echo "  ${CYAN}[3]${RESET} 📦 일반 (디렉토리 + git + README + .gitignore만)"
+    echo "  ${CYAN}[0]${RESET} ⬅️  취소"
+    echo ""
+    echo -n "  선택 > "
+    read kind
+
+    case $kind in
+        1) _seongmin_newproject_python ;;
+        2) _seongmin_frontend ;;
+        3) _seongmin_newproject_generic ;;
+        *) return ;;
+    esac
+}
+
+_seongmin_newproject_python() {
+    _seongmin_init_colors
+    clear
+    _seongmin_header "새 Python 프로젝트" "🐍"
+    echo -n "프로젝트 이름: "
+    read pname
+    [[ -z "$pname" ]] && return
+
+    mkdir -p "$pname" || return
+    cd "$pname" || return
+
+    # uv 우선, 없으면 venv
+    if command -v uv &> /dev/null; then
+        echo "${GREEN}✨ uv 발견 — 빠르게 셋업합니다.${RESET}"
+        uv init
+    else
+        python3 -m venv venv
+        echo "venv 생성 완료. (활성화: source venv/bin/activate)"
+    fi
+
+    # README
+    cat > README.md << EOF
+# $pname
+
+## 설치
+\`\`\`bash
+source venv/bin/activate
+pip install -r requirements.txt
+\`\`\`
+EOF
+
+    # .gitignore (Python 표준)
+    cat > .gitignore << 'EOF'
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.DS_Store
+.idea/
+.vscode/
+EOF
+
+    # git init
+    if command -v git &> /dev/null; then
+        git init -q
+        git add -A
+        echo "${GREEN}✅ git 초기화 완료${RESET}"
+    fi
+
+    echo ""
+    echo "${GREEN}✅ 프로젝트 생성 완료: $(pwd)${RESET}"
+    echo "${CYAN}다음 단계:${RESET}"
+    echo "  cd $pname"
+    if command -v uv &> /dev/null; then
+        echo "  uv add <패키지>"
+    else
+        echo "  source venv/bin/activate"
+        echo "  pip install <패키지>"
+    fi
+    _seongmin_pause
+}
+
+_seongmin_newproject_generic() {
+    _seongmin_init_colors
+    clear
+    echo -n "프로젝트 이름: "
+    read pname
+    [[ -z "$pname" ]] && return
+
+    mkdir -p "$pname" || return
+    cd "$pname" || return
+
+    cat > README.md << EOF
+# $pname
+
+TODO: 프로젝트 설명을 적어주세요.
+EOF
+
+    cat > .gitignore << 'EOF'
+.DS_Store
+.env
+.idea/
+.vscode/
+node_modules/
+*.log
+EOF
+
+    git init -q 2>/dev/null
+
+    echo "${GREEN}✅ 생성 완료: $(pwd)${RESET}"
+    _seongmin_pause
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 🆘 응급 처치 (메뉴 15 - 신규)
+# ═══════════════════════════════════════════════════════════════
+function _seongmin_emergency() {
+    _seongmin_init_colors
+
+    while true; do
+        clear
+        _seongmin_header "응급 처치" "🆘"
+        echo "  ${YELLOW}자주 마주치는 문제 상황별 가이드:${RESET}"
+        echo ""
+        echo "  ${CYAN}[1]${RESET} 🔌 포트가 이미 사용 중 (Address already in use)"
+        echo "  ${CYAN}[2]${RESET} 🐳 Docker daemon이 응답하지 않음"
+        echo "  ${CYAN}[3]${RESET} 💾 디스크 공간 부족"
+        echo "  ${CYAN}[4]${RESET} 🐢 시스템이 너무 느림 (CPU/RAM 확인)"
+        echo "  ${CYAN}[5]${RESET} 🔥 좀비 프로세스 정리"
+        echo "  ${CYAN}[6]${RESET} 🌐 인터넷 연결 진단"
+        echo "  ${CYAN}[7]${RESET} 🐙 git 망함 — 마지막 안전한 상태로"
+        echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
+        echo ""
+        echo -n "  선택 > "
+        read sub
+
+        case $sub in
+            1)
+                clear
+                echo "${YELLOW}🔌 포트 점유 해결${RESET}"
+                echo -n "포트 번호 (예: 3000, 8080): "
+                read port
+                [[ -z "$port" ]] && continue
+                local pids=$(lsof -ti :"$port" 2>/dev/null)
+                if [[ -z "$pids" ]]; then
+                    echo "${GREEN}✅ 포트 $port 는 비어있습니다.${RESET}"
+                else
+                    echo "${RED}점유 중인 PID: $pids${RESET}"
+                    lsof -i :"$port"
+                    echo ""
+                    echo -n "강제 종료할까요? (y/N): "
+                    read ans
+                    if [[ "$ans" =~ ^[Yy]$ ]]; then
+                        echo "$pids" | xargs kill -9
+                        echo "${GREEN}✅ 종료됨${RESET}"
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            2)
+                clear
+                echo "${YELLOW}🐳 Docker 응급 처치${RESET}"
+                if docker info &> /dev/null; then
+                    echo "${GREEN}✅ Docker daemon 정상 작동 중${RESET}"
+                else
+                    echo "${RED}❌ Docker daemon 응답 없음${RESET}"
+                    echo ""
+                    if _seongmin_is_macos; then
+                        echo "${CYAN}해결책:${RESET}"
+                        echo "  1. Docker Desktop 앱 실행 확인"
+                        echo "  2. 메뉴바 고래 아이콘이 안정 상태인지"
+                        echo "  3. 재시작: open -a Docker"
+                        echo ""
+                        echo -n "Docker Desktop 실행할까요? (y/N): "
+                        read ans
+                        [[ "$ans" =~ ^[Yy]$ ]] && open -a Docker
+                    else
+                        echo "${CYAN}해결책:${RESET}"
+                        echo "  sudo systemctl status docker"
+                        echo "  sudo systemctl start docker"
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            3)
+                clear
+                echo "${YELLOW}💾 디스크 공간${RESET}"
+                df -h | head -5
+                echo ""
+                echo "${CYAN}현재 디렉토리 큰 폴더 Top 10:${RESET}"
+                du -sh */ 2>/dev/null | sort -hr | head -10
+                echo ""
+                echo "${YELLOW}💡 흔한 청소 후보:${RESET}"
+                echo "  • node_modules (Frontend 메뉴 → 14)"
+                echo "  • Docker 캐시: docker system prune -a"
+                echo "  • Homebrew: brew cleanup"
+                echo "  • npm 캐시: npm cache clean --force"
+                _seongmin_pause
+                ;;
+            4)
+                clear
+                echo "${YELLOW}🐢 시스템 부하 확인${RESET}"
+                if command -v htop &> /dev/null; then
+                    htop
+                elif command -v top &> /dev/null; then
+                    top
+                fi
+                ;;
+            5)
+                clear
+                echo "${YELLOW}🔥 좀비 프로세스${RESET}"
+                if _seongmin_is_macos; then
+                    ps aux | awk '$8=="Z"'
+                else
+                    ps aux | awk '$8=="Z"'
+                fi
+                _seongmin_pause
+                ;;
+            6)
+                clear
+                echo "${YELLOW}🌐 인터넷 연결 진단${RESET}"
+                echo -n "DNS (8.8.8.8): "
+                if ping -c 1 -W 2 8.8.8.8 &> /dev/null; then
+                    echo "${GREEN}✅${RESET}"
+                else
+                    echo "${RED}❌${RESET}"
+                fi
+                echo -n "DNS 해석 (google.com): "
+                if ping -c 1 -W 2 google.com &> /dev/null; then
+                    echo "${GREEN}✅${RESET}"
+                else
+                    echo "${RED}❌ DNS 문제 가능성${RESET}"
+                fi
+                _seongmin_pause
+                ;;
+            7)
+                clear
+                echo "${YELLOW}🐙 git 응급${RESET}"
+                if [[ ! -d .git ]]; then
+                    echo "${RED}현재 디렉토리는 git 저장소가 아닙니다.${RESET}"
+                    _seongmin_pause; continue
+                fi
+                echo "${CYAN}현재 상태:${RESET}"
+                git status -s
+                echo ""
+                echo "${CYAN}복구 옵션:${RESET}"
+                echo "  [1] 모든 변경 사항 stash로 안전하게 보관"
+                echo "  [2] 마지막 커밋으로 되돌리기 (변경사항 버림 — 위험!)"
+                echo "  [3] reflog로 직전 상태 보기"
+                echo "  [0] 취소"
+                echo -n "선택: "
+                read e
+                case $e in
+                    1) git stash push -m "emergency $(date +%Y%m%d_%H%M%S)" ;;
+                    2)
+                        if _seongmin_confirm_dangerous "git reset --hard HEAD"; then
+                            git reset --hard HEAD
+                        fi
+                        ;;
+                    3) git reflog | head -20 ;;
+                esac
+                _seongmin_pause
+                ;;
+            0|q|Q) return ;;
+            *) echo "${RED}잘못된 선택${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 🧪 유틸 도구 (메뉴 16 - 신규)
+# ═══════════════════════════════════════════════════════════════
+function _seongmin_utils() {
+    _seongmin_init_colors
+
+    while true; do
+        clear
+        _seongmin_header "유틸 도구" "🧪"
+        echo "  ${CYAN}[1]${RESET} 🔢 UUID 생성"
+        echo "  ${CYAN}[2]${RESET} 🔐 비밀번호 생성 (랜덤)"
+        echo "  ${CYAN}[3]${RESET} 📦 Base64 인코딩/디코딩"
+        echo "  ${CYAN}[4]${RESET} 🌐 URL 인코딩/디코딩"
+        echo "  ${CYAN}[5]${RESET} 📋 JSON 포매팅 (jq)"
+        echo "  ${CYAN}[6]${RESET} 🕒 현재 타임스탬프"
+        echo "  ${CYAN}[7]${RESET} 🔢 타임스탬프 ↔ 날짜 변환"
+        echo "  ${CYAN}[8]${RESET} #️⃣  해시 생성 (md5/sha1/sha256)"
+        echo "  ${CYAN}[9]${RESET} 🔡 대소문자/케이스 변환"
+        echo "  ${CYAN}[0]${RESET} ⬅️  돌아가기"
+        echo ""
+        echo -n "  선택 > "
+        read sub
+
+        case $sub in
+            1)
+                clear
+                if command -v uuidgen &> /dev/null; then
+                    local u=$(uuidgen)
+                    echo "${GREEN}🔢 UUID:${RESET} $u"
+                    if _seongmin_is_macos; then echo "$u" | pbcopy; echo "(클립보드 복사됨)"; fi
+                fi
+                _seongmin_pause
+                ;;
+            2)
+                clear
+                echo -n "길이 (기본: 16): "
+                read len
+                [[ -z "$len" ]] && len=16
+                local pwd=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#$%^&*' < /dev/urandom | head -c "$len")
+                echo "${GREEN}🔐 비밀번호:${RESET} $pwd"
+                if _seongmin_is_macos; then echo "$pwd" | pbcopy; echo "(클립보드 복사됨)"; fi
+                _seongmin_pause
+                ;;
+            3)
+                clear
+                echo "  [1] 인코딩  [2] 디코딩"
+                echo -n "선택: "; read mode
+                echo -n "문자열: "; read input
+                if [[ "$mode" == "1" ]]; then
+                    echo "${GREEN}결과:${RESET} $(echo -n "$input" | base64)"
+                else
+                    echo "${GREEN}결과:${RESET} $(echo -n "$input" | base64 -d)"
+                fi
+                _seongmin_pause
+                ;;
+            4)
+                clear
+                echo "  [1] 인코딩  [2] 디코딩"
+                echo -n "선택: "; read mode
+                echo -n "문자열: "; read input
+                if command -v python3 &> /dev/null; then
+                    if [[ "$mode" == "1" ]]; then
+                        python3 -c "import urllib.parse; print(urllib.parse.quote('$input'))"
+                    else
+                        python3 -c "import urllib.parse; print(urllib.parse.unquote('$input'))"
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            5)
+                clear
+                if ! command -v jq &> /dev/null; then
+                    echo "${RED}jq가 필요합니다. brew install jq${RESET}"
+                    _seongmin_pause; continue
+                fi
+                echo "JSON 입력 후 Ctrl+D:"
+                local input=$(cat)
+                echo "$input" | jq .
+                _seongmin_pause
+                ;;
+            6)
+                clear
+                local epoch=$(date +%s)
+                echo "${GREEN}Epoch:${RESET} $epoch"
+                echo "${GREEN}ISO:${RESET}   $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+                echo "${GREEN}로컬:${RESET}  $(date)"
+                _seongmin_pause
+                ;;
+            7)
+                clear
+                echo "  [1] timestamp → 날짜  [2] 날짜 → timestamp"
+                echo -n "선택: "; read mode
+                if [[ "$mode" == "1" ]]; then
+                    echo -n "epoch: "; read e
+                    if _seongmin_is_macos; then
+                        date -r "$e"
+                    else
+                        date -d @"$e"
+                    fi
+                else
+                    echo -n "날짜 (예: 2026-05-05 12:00:00): "; read d
+                    if _seongmin_is_macos; then
+                        date -j -f "%Y-%m-%d %H:%M:%S" "$d" +%s
+                    else
+                        date -d "$d" +%s
+                    fi
+                fi
+                _seongmin_pause
+                ;;
+            8)
+                clear
+                echo -n "문자열: "; read input
+                echo "${GREEN}MD5:   ${RESET} $(echo -n "$input" | md5 2>/dev/null || echo -n "$input" | md5sum | awk '{print $1}')"
+                echo "${GREEN}SHA1:  ${RESET} $(echo -n "$input" | shasum -a 1 | awk '{print $1}')"
+                echo "${GREEN}SHA256:${RESET} $(echo -n "$input" | shasum -a 256 | awk '{print $1}')"
+                _seongmin_pause
+                ;;
+            9)
+                clear
+                echo -n "문자열: "; read input
+                echo "${GREEN}대문자:${RESET} $(echo "$input" | tr '[:lower:]' '[:upper:]')"
+                echo "${GREEN}소문자:${RESET} $(echo "$input" | tr '[:upper:]' '[:lower:]')"
+                _seongmin_pause
+                ;;
+            0|q|Q) return ;;
+            *) echo "${RED}잘못된 선택${RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+
+# 단축 명령어 alias
+# dxk = DX Kit (1순위)
+# gg  = 레거시 호환 (계속 유지)
+alias dxk="seongmin"
+alias gg="seongmin"

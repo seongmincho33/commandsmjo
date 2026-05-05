@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║                    🚀 Seongmin's ZSH Menu Installer                       ║
+# ║                    🚀 DX Kit Installer                                    ║
+# ║                  Developer Experience Kit (by Seongmin)                   ║
 # ║                          macOS / Linux 전용                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
@@ -31,8 +32,8 @@ fi
 print_banner() {
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}      🎉 ${GREEN}Seongmin's ZSH Menu Installer${NC}                     ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC}         Git, Python, Docker, Homebrew 명령어 메뉴        ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}         🎉 ${GREEN}DX Kit Installer${NC}                                ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}       Developer Experience Kit (명령어: ${YELLOW}dxk${NC})              ${CYAN}║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -59,15 +60,17 @@ error() {
 
 # OS 확인
 check_os() {
+    IS_BASH_USER=0
     if [[ "$OSTYPE" == "darwin"* ]]; then
         OS="macOS"
         SHELL_RC="$HOME/.zshrc"
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         OS="Linux"
-        if [ -n "$ZSH_VERSION" ]; then
-            SHELL_RC="$HOME/.zshrc"
-        else
-            SHELL_RC="$HOME/.bashrc"
+        # 메뉴는 zsh 전용이므로 항상 .zshrc 사용
+        SHELL_RC="$HOME/.zshrc"
+        # 현재 셸이 bash인지 확인 (안내용)
+        if [ -z "$ZSH_VERSION" ]; then
+            IS_BASH_USER=1
         fi
     else
         error "지원하지 않는 운영체제입니다: $OSTYPE"
@@ -76,6 +79,56 @@ check_os() {
     fi
     info "운영체제: $OS"
     info "설정 파일: $SHELL_RC"
+}
+
+# zsh 설치 확인 (없으면 친절한 안내 후 종료)
+check_zsh() {
+    if command -v zsh >/dev/null 2>&1; then
+        info "zsh 발견: $(command -v zsh)"
+        return 0
+    fi
+
+    echo ""
+    error "이 메뉴는 zsh 기반입니다. zsh가 설치되어 있지 않습니다."
+    echo ""
+    echo -e "${CYAN}📦 설치 방법:${NC}"
+
+    if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        case "$ID" in
+            rocky|rhel|centos|fedora|almalinux|ol)
+                echo -e "   ${YELLOW}sudo dnf install -y zsh${NC}"
+                ;;
+            ubuntu|debian|linuxmint|pop)
+                echo -e "   ${YELLOW}sudo apt install -y zsh${NC}"
+                ;;
+            arch|manjaro|endeavouros)
+                echo -e "   ${YELLOW}sudo pacman -S zsh${NC}"
+                ;;
+            opensuse*|sles)
+                echo -e "   ${YELLOW}sudo zypper install -y zsh${NC}"
+                ;;
+            alpine)
+                echo -e "   ${YELLOW}sudo apk add zsh${NC}"
+                ;;
+            *)
+                echo -e "   배포판($ID)에 맞는 패키지 매니저로 zsh를 설치해주세요."
+                ;;
+        esac
+    else
+        echo -e "   배포판에 맞는 패키지 매니저로 zsh를 설치해주세요."
+    fi
+
+    echo ""
+    echo -e "${CYAN}ℹ️  걱정 마세요:${NC}"
+    echo -e "   • 로그인 셸을 바꾸지 않아도 됩니다 (bash 그대로 사용 가능)"
+    echo -e "   • 메뉴를 쓰고 싶을 때만 ${YELLOW}zsh${NC} 를 입력해 진입하면 됩니다"
+    echo -e "   • 디스크 사용량은 약 5MB 정도입니다"
+    echo ""
+    echo -e "설치 후 다시 ${YELLOW}./install.sh${NC} 를 실행해주세요."
+    echo ""
+    exit 1
 }
 
 # 설치 디렉토리 생성
@@ -108,10 +161,16 @@ copy_files() {
 # 쉘 설정 파일에 source 추가
 configure_shell() {
     info "쉘 설정 파일 업데이트 중..."
-    
+
     local source_line="# Seongmin's ZSH Menu"
     local source_cmd="source \"$INSTALL_DIR/$MENU_FILE\""
-    
+
+    # .zshrc가 없으면 새로 생성
+    if [ ! -f "$SHELL_RC" ]; then
+        touch "$SHELL_RC"
+        success "$SHELL_RC 파일을 새로 생성했습니다"
+    fi
+
     # 이미 추가되어 있는지 확인
     if grep -q "Seongmin's ZSH Menu" "$SHELL_RC" 2>/dev/null; then
         warn "이미 설정되어 있습니다. 기존 설정을 업데이트합니다."
@@ -148,7 +207,7 @@ print_complete() {
     echo -e "      ${YELLOW}source $SHELL_RC${NC}"
     echo ""
     echo -e "   2. 메뉴 실행:"
-    echo -e "      ${YELLOW}gg${NC}  또는  ${YELLOW}_seongmin_menu${NC}"
+    echo -e "      ${YELLOW}dxk${NC}  (또는 기존 ${YELLOW}gg${NC})"
     echo ""
     echo -e "${CYAN}📚 포함된 기능:${NC}"
     echo -e "   • 🐙 Git 명령어 (+ 초보자 가이드)"
@@ -211,10 +270,44 @@ main() {
     
     echo ""
     check_os
+    check_zsh
     create_install_dir
     copy_files
     configure_shell
     print_complete
+
+    # bash 사용자에게 추가 안내
+    if [ "$IS_BASH_USER" = "1" ]; then
+        echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║${NC}  💡 bash 사용자 안내                                       ${YELLOW}║${NC}"
+        echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
+        echo -e "   • 로그인 셸은 ${GREEN}bash 그대로${NC} 유지됩니다"
+        echo -e "   • 메뉴를 쓰고 싶을 때 터미널에서 ${YELLOW}zsh${NC} 입력 → ${YELLOW}gg${NC} 실행"
+        echo -e "   • 빠져나오려면 ${YELLOW}exit${NC} 입력 (다시 bash로 돌아옴)"
+        echo ""
+    fi
+    
+    # 설치 완료 안내
+    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC}        🎊 ${CYAN}설치가 모두 완료되었습니다!${NC}                      ${GREEN}║${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "   ${GREEN}dxk${NC} 명령어로 메뉴를 실행할 수 있습니다! (별칭: ${GREEN}gg${NC})"
+    echo -e "   ${CYAN}dxk help${NC} 로 직접 실행 모드 도움말을 볼 수 있습니다."
+    echo ""
+
+    # 자동으로 zsh 진입 (bash 사용자에게는 일시적, zsh 사용자는 셸 재시작 효과)
+    if [ "$IS_BASH_USER" = "1" ]; then
+        echo -e "${YELLOW}zsh를 실행합니다. (exit 입력 시 bash로 돌아옵니다)${NC}"
+    else
+        echo -e "${YELLOW}쉘을 재시작하여 변경사항을 적용합니다...${NC}"
+    fi
+    sleep 1
+    if command -v zsh >/dev/null 2>&1; then
+        exec zsh
+    else
+        warn "zsh 실행 실패. 새 터미널을 열거나 'zsh' 를 직접 실행해주세요."
+    fi
 }
 
 # 스크립트 실행
