@@ -1,10 +1,14 @@
 # 🚀 DX Kit — Developer Experience Kit
 
-> **터미널 명령어가 헷갈리시나요?** Git, Python, Docker… 외울 게 너무 많죠.
+> **터미널 명령어가 헷갈리시나요?** Git, Python, Docker, Linux 배포판별 명령어… 외울 게 너무 많죠.
 > DX Kit은 자주 쓰는 명령어들을 **번호만 누르면** 실행되도록 만들어줍니다.
 > 터미널에서 `dxk` 한 번이면 끝! ✨
->
-> *(이전 사용자: `gg` 명령도 계속 사용 가능합니다)*
+
+<p align="center">
+  <strong>v2.2 · 18개 카테고리 · 5개 Linux distro 지원 · macOS/Linux/Windows</strong>
+</p>
+
+> *(이전 사용자: `gg` 명령도 계속 동작합니다)*
 
 ---
 
@@ -14,12 +18,14 @@
 - ⚡ **타이핑이 귀찮은 분** — 자주 쓰는 명령을 메뉴로 빠르게
 - 🧑‍🏫 **가르치는 분** — 학생/주니어에게 명령어 흐름을 보여줄 때
 - 🎨 **개발 환경 통일** — 팀원 모두가 같은 명령어 셋을 쓰고 싶을 때
+- 🐧 **여러 Linux 다루는 분** — Ubuntu/RHEL/SUSE/Alpine 명령어가 헷갈릴 때
+- 👨‍💼 **시니어 / SRE** — 운영 대시보드, 프로세스 forensics, 헬스체크 같은 *조합 명령*
 
 ---
 
 ## ✨ 어떤 기능이 있나요?
 
-### 🛠 개발 도구 (16개 카테고리)
+### 🛠 개발 도구 (메뉴 1~11)
 
 | 카테고리 | 내용 |
 |---|---|
@@ -27,22 +33,23 @@
 | 🐍 **Python** | venv, pip, **uv 지원**, **pytest**, **ruff**, Jupyter, `__pycache__` 정리 |
 | 🐳 **Docker** | 컨테이너/이미지/Compose + **daemon 사전 체크**, **stats**, **logs -f**, **exec** |
 | 🍺 **Homebrew** | **install/uninstall/search/info/doctor/outdated/leaves/bundle** 모두 지원 |
-| ☕ **Java** | jenv, Gradle, Maven, 포트 정리 |
+| ☕ **Java** | jenv, Gradle, Maven, 포트 정리, 단일 파일 실행 |
 | 🎨 **Frontend** | Vite/Next/**Astro**/**Remix**/**Nuxt**/**SvelteKit** + **bun**, dev/build/lint, node_modules 청소 |
 | 🔴 **Redis** | macOS/**Linux systemd 자동 분기**, PING, KEYS, INFO, FLUSHDB |
 | 🐚 **Shell** | PATH 분석, alias/env/history 검색, dotfile 백업, oh-my-zsh |
 | 🔍 **버전 체크** | Go/Rust/Ruby/PHP/Bun/Deno/kubectl/terraform/aws 등 30+ 도구 |
-| 🔧 **Jenkins / 🤖 Claude Code** |
+| 🔧 **Jenkins** | 서비스 관리, Job 관리, 빌드/플러그인, API 인증 |
+| 🤖 **Claude Code** | 업그레이드, doctor, MCP/세션 관리 |
 
-### ⭐ 신규 카테고리 (v2.0)
+### 🌱 일상 개발 도구 (메뉴 12~16, v2.0)
 
-| 카테고리 | 내용 |
-|---|---|
-| 🔐 **SSH 키 관리** | keygen, ssh-add, ssh-copy-id, config 편집, 클립보드 복사 |
-| 🌐 **Network 진단** | ping, dig, curl 응답시간, 포트 확인, 공인/로컬 IP, SSL 만료일 |
-| 🆕 **새 프로젝트 시작** | Python(uv 우선)/Frontend/일반 — git init + README + .gitignore 자동 |
-| 🆘 **응급 처치** | 포트 충돌, Docker 죽음, 디스크 부족, git 망함 등 상황별 가이드 |
-| 🧪 **유틸 도구** | UUID, 비밀번호 생성, Base64, URL encode, JSON 포매팅, 해시, 타임스탬프 변환 |
+| 카테고리 | 내용 | 직접 호출 |
+|---|---|---|
+| 🔐 **SSH 키 관리** | keygen, ssh-add, ssh-copy-id, config 편집, 클립보드 복사 | (메뉴 12) |
+| 🌐 **Network 진단** | ping, dig, curl 응답시간, 포트 확인, 공인/로컬 IP, SSL 만료일 | (메뉴 13) |
+| 🆕 **새 프로젝트 시작** | Python(uv 우선)/Frontend/일반 — git init + README + .gitignore 자동 | (메뉴 14) |
+| 🆘 **응급 처치** | 포트 충돌, Docker 죽음, 디스크 부족, git 망함 등 상황별 가이드 | (메뉴 15) |
+| 🧪 **유틸 도구** | UUID, 비밀번호 생성, Base64, URL encode, JSON 포매팅, 해시, 타임스탬프 변환 | (메뉴 16) |
 
 ### 🐧 Linux 시스템 관리 (v2.2) — 5개 distro 지원
 
@@ -84,18 +91,49 @@
 
 > 💡 시니어 분들이 "외워서 손이 가는" 명령어들이 아니라, *명령 5~10개를 조합해야 답이 나오는* 작업들을 모았습니다.
 
-### 🔧 메타 명령
+### ⚡ 직접 명령 모음
+
+메뉴 안 거치고 바로 호출할 수 있는 단축 명령들:
 
 ```bash
-dxk                    # 인터랙티브 메뉴
-dxk --version          # 버전 확인
+# 메타
+dxk                    # 인터랙티브 메뉴 진입
+dxk --version          # 버전 정보
 dxk --help             # 통합 도움말
-dxk search <키워드>     # 메뉴 항목 검색
-dxk update             # DX Kit 자체 업데이트 (git pull)
+dxk search <키워드>     # 메뉴 항목 검색 (fzf 있으면 활용)
+dxk update             # DX Kit 자체 업데이트 (소스 git pull → 자동 동기화)
+
+# 카테고리 직접 호출
+dxk git status         # git 명령 그대로 패스스루
+dxk docker ps          # docker
+dxk brew install ...   # brew
+
+# 🎨 Pretty Docker (단축 별칭으로도 사용 가능)
+dps                    # docker ps 예쁘게 (포트 dedup, 헬스 이모지)
+dps --status=exited    # 종료된 컨테이너만
+dps --json | jq        # JSON 출력
+dimg                   # docker images 예쁘게 (size별 색상)
+dimg --dangling        # dangling 이미지만
+
+# 🔧 시니어 / SRE 모드 (단축 명령)
+dash                   # 운영 대시보드 (CPU/MEM/DISK/Top 5/OOM)
+dxk pid <PID|name>     # 프로세스 forensics
+dxk health             # 헬스 체크 (SSL/디스크/Docker)
+dxk kernel             # OOM/auth fail/reboot 이력
+snip                   # Snippet 라이브러리 (cheatsheet)
+
+# 🐧 Linux 시스템 관리
+dxk linux              # 메인 메뉴 (자동 distro 감지)
+dxk pkg                # 패키지 관리 (apt/dnf/zypper/apk/pacman 자동)
+dxk svc                # 서비스 관리 (systemd/OpenRC)
+dxk fw                 # 방화벽 (ufw/firewalld/iptables)
+dxk cheat              # 5개 distro 비교 cheatsheet
+dxk translate          # "apt install" → 모든 distro 변환기
 ```
 
-> 🔒 **안전장치**: `git push --force`, `rm -rf`, `docker prune`, `FLUSHDB`, `brew uninstall` 등 위험한 명령은 **실행 전에 한 번 더 물어봅니다**.
+> 🔒 **안전장치**: `git push --force`, `rm -rf`, `docker prune`, `FLUSHDB`, `brew uninstall`, `userdel -r` 등 위험한 명령은 **실행 전에 한 번 더 물어봅니다**.
 > 🎨 **NO_COLOR 지원**: 환경변수 `NO_COLOR=1` 설정 시 색상 비활성화 (표준 관례).
+> 🚪 **언제든 취소**: 어떤 입력 화면에서든 `q` 또는 그냥 엔터만 누르면 메뉴로 복귀.
 
 ---
 
@@ -106,8 +144,8 @@ dxk update             # DX Kit 자체 업데이트 (git pull)
 macOS는 기본 셸이 zsh라서 **추가 설치 없이** 바로 진행할 수 있습니다.
 
 ```bash
-git clone https://github.com/your-username/zsh_seongmin.git
-cd zsh_seongmin
+git clone https://github.com/seongmincho33/commandsmjo.git
+cd commandsmjo
 chmod +x install.sh
 ./install.sh
 ```
@@ -133,8 +171,8 @@ chmod +x install.sh
 #### 2단계: 설치 스크립트 실행
 
 ```bash
-git clone https://github.com/your-username/zsh_seongmin.git
-cd zsh_seongmin
+git clone https://github.com/seongmincho33/commandsmjo.git
+cd commandsmjo
 chmod +x install.sh
 ./install.sh
 ```
@@ -148,8 +186,8 @@ chmod +x install.sh
 ### 🪟 Windows (PowerShell)
 
 ```powershell
-git clone https://github.com/your-username/zsh_seongmin.git
-cd zsh_seongmin
+git clone https://github.com/seongmincho33/commandsmjo.git
+cd commandsmjo
 
 # 처음 사용 시 한 번만 실행
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -183,18 +221,34 @@ dxk
 ```
 
 ```
-  ╔════════════════════════════════════════════════════════╗
-  ║        🚀 DX Kit — Developer Experience Kit            ║
-  ╠════════════════════════════════════════════════════════╣
-  ║   [1] 🐙 Git           [2] 🐍 Python                    ║
-  ║   [3] ☕ Java           [4] 🍺 Homebrew                 ║
-  ║   [5] 🐳 Docker        [6] 🔴 Redis                     ║
-  ║   ...                                                   ║
-  ║   [12] 🔐 SSH          [13] 🌐 Network                  ║
-  ║   [14] 🆕 새 프로젝트   [15] 🆘 응급 처치                ║
-  ║   [16] 🧪 유틸                                          ║
-  ║   [s] 검색  [u] 업데이트  [v] 버전  [0] 종료              ║
-  ╚════════════════════════════════════════════════════════╝
+  ╔══════════════════════════════════════════════════════════════╗
+  ║   🌸 DX Kit — Developer Experience Kit  v2.2                 ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║                                                              ║
+  ║   [ 개발 도구 ]                                              ║
+  ║   [1] 🐙 Git          [2] 🐍 Python                          ║
+  ║   [3] ☕ Java         [4] 🍺 Homebrew                        ║
+  ║   [5] 🐳 Docker       [6] 🔴 Redis                           ║
+  ║                                                              ║
+  ║   [ 시스템 & 기타 ]                                          ║
+  ║   [7] 🐚 Shell        [8] 🔍 버전 확인                       ║
+  ║   [9] 🎨 Frontend     [10] 🔧 Jenkins                        ║
+  ║   [11] 🤖 Claude Code                                        ║
+  ║                                                              ║
+  ║   [ 일상 도구 (v2.0) ]                                       ║
+  ║   [12] 🔐 SSH         [13] 🌐 Network                        ║
+  ║   [14] 🆕 새 프로젝트  [15] 🆘 응급 처치                       ║
+  ║   [16] 🧪 유틸                                               ║
+  ║                                                              ║
+  ║   [ Senior / SRE (v2.1) ]                                    ║
+  ║   [17] 🔧 운영 모드 (대시보드/forensics/snip 등 10개)         ║
+  ║                                                              ║
+  ║   [ Linux 시스템 (v2.2) ]                                    ║
+  ║   [18] 🐧 Linux 관리 (pkg/service/fw/cheatsheet/변환기)       ║
+  ║                                                              ║
+  ║   [s] 검색  [u] 업데이트  [v] 버전  [0] 종료                  ║
+  ║   💡 어디서든 q 또는 엔터로 취소                              ║
+  ╚══════════════════════════════════════════════════════════════╝
 ```
 
 번호만 입력하면 다음 메뉴로 이동! 🪄
@@ -211,6 +265,41 @@ dxk help            # 직접 실행 모드 도움말
 ```
 
 > 💡 **별칭**: `dxk`와 `gg` 둘 다 동작합니다. 손가락이 익숙한 쪽을 쓰세요.
+
+---
+
+## 🔥 30초 데모 — 가장 즐겨 쓰는 명령들
+
+```bash
+# 1️⃣  서버 상태 한방에 (새벽 3시 알람용)
+dash
+# → CPU 47% / MEM 61% / DISK 31% / Docker: 5 running, 2 unhealthy ⚠️
+# → Top CPU 5: java 45%, postgres 12%, ...
+# → OOM kill 감지: 0건
+
+# 2️⃣  Docker 컨테이너 깔끔하게 보기
+dps
+# → 🟢 bundok-pg     postgres:16-alpine    Up 19m ✓    :15432→5432/tcp
+
+# 3️⃣  명령어 까먹었을 때 (5개 distro 비교)
+dxk cheat
+# → 🦊 Debian: apt install   🎩 RHEL: dnf install   🦎 SUSE: zypper in ...
+
+# 4️⃣  "어떤 distro에서 이게 뭐였더라?" — 변환기
+dxk translate
+# 입력: dnf install nginx
+# → 🦊 sudo apt install -y nginx
+# → 🦎 sudo zypper install -y nginx ...
+
+# 5️⃣  나만의 cheatsheet 검색 (fzf 활용)
+snip search "tcpdump"
+# → 자기가 정리한 명령어 1줄 컬렉션 검색
+
+# 6️⃣  프로세스 forensics (PID 또는 이름)
+dxk pid 12345
+dxk pid nginx
+# → ps + cmdline + cwd + 환경변수 + lsof 요약 + 자식 프로세스 한번에
+```
 
 ---
 
@@ -291,7 +380,47 @@ which zsh
 <details>
 <summary><b>Q. 메뉴를 어떻게 빠져나오나요?</b></summary>
 
-각 메뉴에서 `0` 또는 `q` 입력 → 종료 / 상위 메뉴.
+- 메뉴 화면: `0` 또는 `q` → 상위 메뉴 / 종료
+- 입력 화면 (예: "패키지 이름: "): `q` 또는 그냥 엔터 → 취소 후 메뉴로 복귀
+- Ctrl+C 안 눌러도 됩니다 (셸 죽을 위험 없음)
+</details>
+
+<details>
+<summary><b>Q. <code>dxk update</code> 가 "git 저장소가 아니다"라고 해요</b></summary>
+
+설치 시 메뉴 파일만 `~/.zsh_menu/` 로 복사되기 때문이에요. `dxk update`는:
+1. `~/.zsh_menu/.source_path` 에서 소스 git 폴더를 찾고
+2. 거기서 `git pull` 한 뒤
+3. `menu.zsh` 를 다시 복사합니다
+
+소스 폴더(예: `~/Documents/commandsmjo/`)가 git clone으로 받은 곳인지 확인하세요.
+다른 위치에 있다면, `dxk update` 가 한 번 물어본 뒤 자동 저장합니다.
+</details>
+
+<details>
+<summary><b>Q. 시니어인데 메뉴 같은 거 쓰지 않아요</b></summary>
+
+맞습니다 — `git status` 같은 일상 명령은 손이 외워서 메뉴 쓸 일 없죠.
+대신 **외워서 못 만드는 *조합 명령*** 들이 있어요 (메뉴 17 / `dxk dash`):
+- `dash` — CPU/MEM/DISK/Docker/Listen/Top 한 번에
+- `dxk pid <name>` — ps + lsof + cmdline + env + 자식 트리 통합
+- `dxk health` — SSL 만료/디스크/systemd/Docker 헬스체크
+- `snip` — 자기 cheatsheet 관리 (fzf 검색)
+
+이런 건 매번 5~10개 명령 조합해야 답 나오는 것들이에요.
+</details>
+
+<details>
+<summary><b>Q. 여러 Linux 서버 다루는데 명령어가 헷갈려요</b></summary>
+
+메뉴 18 (`dxk linux`) 가 자동으로 distro 감지합니다:
+- Ubuntu/Debian → `apt`
+- Rocky/RHEL → `dnf`
+- SUSE → `zypper`
+- Alpine → `apk`
+- Arch → `pacman`
+
+또는 `dxk cheat` 로 5개 distro 비교, `dxk translate` 로 명령어 변환 가능.
 </details>
 
 ---
@@ -335,6 +464,13 @@ zsh_seongmin/
 Pull Request, Issue, 별점(⭐) 모두 환영입니다!
 새로운 명령어를 추가하고 싶으시면 부담 없이 PR 보내주세요.
 
+### 기여 가이드라인
+
+- **alias 추가 X** — 메뉴는 진짜 명령어를 보여주는 게 원칙
+- **macOS / Linux 양쪽 동작** — `_seongmin_is_macos` / `_seongmin_is_linux` 분기
+- **위험 명령은 `_seongmin_confirm_dangerous`** — 추가하는 명령이 위험하면 패턴 등록
+- **취소 가능** — 입력은 `_seongmin_input` 사용 (q/엔터로 취소)
+
 ---
 
 ## 📜 라이선스
@@ -343,6 +479,19 @@ MIT License — 자유롭게 쓰시고 수정하세요.
 
 ---
 
+## 🗺️ 로드맵 / 변경 이력
+
+[ROADMAP.md](./ROADMAP.md) 에 모든 변경 사항과 향후 계획이 기록되어 있습니다.
+
+| 버전 | 날짜 | 핵심 변화 |
+|---|---|---|
+| **v2.2** | 2026-05 | 🐧 Linux 시스템 관리 (5개 distro), cheatsheet, 변환기 |
+| **v2.1** | 2026-05 | 🔧 시니어/SRE 모드 10개, alias 시스템 제거, 취소 패턴 |
+| **v2.0** | 2026-05 | dx → dxk 리브랜딩, Pretty Docker, 신규 메뉴 5개 |
+
+---
+
 <p align="center">
-  Made with ☕ by Seongmin · 즐거운 개발 되세요! 🚀
+  <strong>🌸 Made with ☕ by Seongmin</strong><br>
+  <em>즐거운 개발 되세요! 🚀</em>
 </p>
