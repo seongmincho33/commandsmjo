@@ -44,6 +44,46 @@
 | 🆘 **응급 처치** | 포트 충돌, Docker 죽음, 디스크 부족, git 망함 등 상황별 가이드 |
 | 🧪 **유틸 도구** | UUID, 비밀번호 생성, Base64, URL encode, JSON 포매팅, 해시, 타임스탬프 변환 |
 
+### 🐧 Linux 시스템 관리 (v2.2) — 5개 distro 지원
+
+배포판마다 명령어가 다 달라서 헷갈릴 때 (apt vs dnf vs zypper vs apk vs pacman). **자동 감지 + cheatsheet + 변환기**.
+
+| 도구 | 설명 | 직접 호출 |
+|---|---|---|
+| 📦 **패키지 관리** | search/install/remove/info/upgrade — 5개 distro 자동 분기 | `dxk pkg` |
+| ⚙️ **서비스 관리** | systemd / OpenRC 자동 감지 | `dxk svc` |
+| 🔥 **방화벽** | ufw / firewalld / iptables 자동 감지 | `dxk fw` |
+| 👤 **사용자/그룹** | sudo vs wheel 그룹 자동 처리 | (메뉴 18→4) |
+| 📡 **네트워크** | netplan / NetworkManager / wicked 분기 | (메뉴 18→5) |
+| 📜 **로그/저널** | journalctl + 전통 로그 (syslog vs messages) | (메뉴 18→6) |
+| 🛡 **보안** | SELinux (RHEL) / AppArmor (Ubuntu) 자동 감지 | (메뉴 18→7) |
+| 🚀 **부팅/커널** | systemd-analyze, GRUB 재생성 (distro별) | (메뉴 18→8) |
+| 🗄 **저장소 관리** | PPA / dnf config-manager / zypper repo | (메뉴 18→9) |
+| 📚 **Cheatsheet** | 5개 distro × 6개 카테고리 비교표 | `dxk cheat` |
+| 🔍 **변환기** | "apt install nginx" → 모든 distro 명령어 | `dxk translate` |
+
+> 💡 **macOS 호환**: 명령어 표시 + 클립보드 복사 가능 (실행은 Linux 환경에서만).
+> 💡 **자동 감지**: `/etc/os-release` 파싱해서 Ubuntu/Rocky/SUSE/Alpine/Arch 자동 인식.
+
+### 🔧 Senior / SRE 모드 (v2.1) — 외워서 못 만드는 것들
+
+여러 명령을 조합해야 답이 나오는 작업들. 새벽 3시 알람용.
+
+| 도구 | 설명 | 직접 호출 |
+|---|---|---|
+| 🚨 **운영 대시보드** | CPU/MEM/DISK 바 + Docker + Listen + Top 5 + OOM | `dxk dash` |
+| 🩺 **헬스 체크** | 인터넷, 디스크 90%↑, SSL 만료, systemd, Docker unhealthy | `dxk health` |
+| 🔬 **프로세스 forensics** | ps + cmdline + cwd + env + limits + lsof + pstree 통합 | `dxk pid <PID\|name>` |
+| 🌐 **Network deep dive** | ss, HTTP timing, SSL chain, mtr, tcpdump, multi-ping, DNS 일관성 | (메뉴 17→4) |
+| 📜 **Log power tools** | journalctl 필터, multi-file tail, **빈도 분석** (sort/uniq), context grep | (메뉴 17→5) |
+| 💾 **Disk/IO 분석** | du Top 20, iostat, docker system df, big file finder | (메뉴 17→6) |
+| 🐘 **PostgreSQL 진단** | 활성 쿼리, 슬로우 (pg_stat_statements), 락, idle TX, 캐시 적중률 | (메뉴 17→7) |
+| ⚓ **Kubernetes 운영** | ctx/ns 전환, pod top, "왜 죽었나" 통합, configmap diff | (메뉴 17→8) |
+| 🆘 **커널 이벤트** | OOM, 재부팅, auth fail, systemd failed, 최근 sudo | `dxk kernel` |
+| 📚 **Snippet 라이브러리** | fzf 검색 가능한 cheatsheet (markdown 카테고리별) | `dxk snip` |
+
+> 💡 시니어 분들이 "외워서 손이 가는" 명령어들이 아니라, *명령 5~10개를 조합해야 답이 나오는* 작업들을 모았습니다.
+
 ### 🔧 메타 명령
 
 ```bash
@@ -116,6 +156,19 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 .\install_windows.ps1
 ```
+
+---
+
+## 🎯 철학
+
+> **이 도구는 명령어를 외우게 하지 않습니다. 익히게 도와줍니다.**
+
+- ✅ 메뉴는 **진짜 명령어**(`python3 -m venv venv`)를 표시 — alias가 아니라
+- ✅ 익숙해지면 메뉴 없이 직접 칠 수 있게 됨 = **메뉴를 안 쓰게 만드는 게 좋은 메뉴**
+- ✅ 다른 컴퓨터/서버 SSH 들어가도 그대로 통함 (이식성)
+- ❌ 의미 없는 약자(`pv`, `gs`, `bi`)를 강요하지 않음
+
+> *"메뉴는 자전거의 보조 바퀴 같은 거예요. 처음에는 도움 되지만, 결국 떼고 달리는 게 목표."*
 
 ---
 
@@ -264,19 +317,16 @@ which zsh
 
 ```
 zsh_seongmin/
-├── menu.zsh             # 🧠 메인 메뉴 (~4600줄)
+├── menu.zsh             # 🧠 메인 메뉴 (모든 기능 통합)
 ├── install.sh           # 🍎🐧 macOS/Linux 설치 스크립트
 ├── install_windows.ps1  # 🪟 Windows 설치 스크립트
-├── git.zsh              # Git 별칭 모음 (gs, ga, gc, gp …)
-├── python.zsh           # Python/venv 도우미 (py, pv, pynew)
-├── java.zsh             # Java/Gradle/Maven 별칭
-├── docker.zsh           # Docker 별칭
-├── homebrew.zsh         # Homebrew 별칭
-├── redis.zsh            # Redis 별칭
-├── shell.zsh            # 셸 유틸리티
-├── version.zsh          # 버전 체크 유틸리티
+├── ROADMAP.md           # 🗺️ 단계별 개선 계획
 └── README.md            # 👋 이 파일
 ```
+
+> 💡 **v2.1부터 alias 파일들(git.zsh, python.zsh 등)을 모두 제거했습니다.**
+> 의미 없는 약자(`pv`, `gs`, `bi`...)를 외우는 비용보다 **진짜 명령어를 익히는 게 더 가치 있다**고 판단했어요.
+> 메뉴는 진짜 명령어(`python3 -m venv venv`)를 그대로 보여주므로, 메뉴를 익히면 곧 메뉴 없이도 쓸 수 있게 됩니다.
 
 ---
 

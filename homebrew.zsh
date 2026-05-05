@@ -1,5 +1,0 @@
-alias bu='brew update && brew upgrade'
-alias bi='brew install'
-alias bl='brew list'
-alias bsl='brew services list'
-alias bc='brew cleanup'

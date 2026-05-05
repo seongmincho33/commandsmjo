@@ -146,7 +146,7 @@ create_install_dir() {
 copy_files() {
     info "메뉴 파일 복사 중..."
     info "소스 디렉토리: $SCRIPT_DIR"
-    
+
     # 현재 스크립트 위치에서 menu.zsh 찾기
     if [ -f "$SCRIPT_DIR/$MENU_FILE" ]; then
         cp "$SCRIPT_DIR/$MENU_FILE" "$INSTALL_DIR/"
@@ -155,6 +155,15 @@ copy_files() {
         error "menu.zsh 파일을 찾을 수 없습니다: $SCRIPT_DIR/$MENU_FILE"
         echo "install.sh와 같은 디렉토리에 menu.zsh가 있어야 합니다."
         exit 1
+    fi
+
+    # dxk update 가 소스 git 저장소를 찾을 수 있도록 경로 기록
+    echo "$SCRIPT_DIR" > "$INSTALL_DIR/.source_path"
+    if [ -d "$SCRIPT_DIR/.git" ]; then
+        success "소스 git 저장소 감지됨 — 'dxk update'로 자동 업데이트 가능"
+    else
+        warn "소스가 git 저장소가 아닙니다 — 'dxk update'는 작동하지 않습니다"
+        warn "  (git clone으로 받으셨다면 .git 폴더가 있어야 합니다)"
     fi
 }
 
