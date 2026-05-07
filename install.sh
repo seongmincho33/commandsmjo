@@ -302,19 +302,55 @@ uninstall() {
     echo ""
 }
 
+# 사용자의 로그인 셸을 자동 감지해 TARGET_SHELL을 설정
+# 우선순위: $SHELL → zsh 존재 여부 → bash fallback
+auto_detect_shell() {
+    local detected=""
+    case "$SHELL" in
+        */zsh)  detected="zsh"  ;;
+        */bash) detected="bash" ;;
+        *)
+            # $SHELL이 비어 있거나 다른 셸인 경우 — zsh가 깔려 있으면 zsh, 아니면 bash
+            if command -v zsh >/dev/null 2>&1; then
+                detected="zsh"
+            else
+                detected="bash"
+            fi
+            ;;
+    esac
+
+    if [ "$detected" = "bash" ]; then
+        TARGET_SHELL="bash"
+        INSTALL_DIR="$HOME/.bash_menu"
+        MENU_FILE="menu.bash"
+        MARKER_COMMENT="Seongmin's BASH Menu"
+    else
+        TARGET_SHELL="zsh"
+        INSTALL_DIR="$HOME/.zsh_menu"
+        MENU_FILE="menu.zsh"
+        MARKER_COMMENT="Seongmin's ZSH Menu"
+    fi
+
+    info "현재 셸 감지: $SHELL → 타겟: $TARGET_SHELL (--bash / --zsh 로 강제 가능)"
+}
+
 # 메인 로직
 main() {
     # 인자 파싱 (--bash / --zsh / --uninstall)
+    # 명시적 인자가 있으면 자동 감지를 덮어씀
     local do_uninstall=0
+    local explicit_shell=0
     for arg in "$@"; do
         case "$arg" in
             --bash)
+                explicit_shell=1
                 TARGET_SHELL="bash"
                 INSTALL_DIR="$HOME/.bash_menu"
                 MENU_FILE="menu.bash"
                 MARKER_COMMENT="Seongmin's BASH Menu"
                 ;;
             --zsh)
+                explicit_shell=1
                 TARGET_SHELL="zsh"
                 INSTALL_DIR="$HOME/.zsh_menu"
                 MENU_FILE="menu.zsh"
@@ -325,6 +361,11 @@ main() {
                 ;;
         esac
     done
+
+    # 명시 인자가 없으면 자동 감지
+    if [ "$explicit_shell" = "0" ]; then
+        auto_detect_shell
+    fi
 
     print_banner
 
