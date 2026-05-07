@@ -15,9 +15,11 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# 변수 설정
+# 변수 설정 (기본은 zsh — main()에서 --bash 인자로 덮어씀)
 INSTALL_DIR="$HOME/.zsh_menu"
 MENU_FILE="menu.zsh"
+TARGET_SHELL="zsh"
+MARKER_COMMENT="Seongmin's ZSH Menu"
 
 # 스크립트 디렉토리 감지 (bash와 zsh 모두 지원)
 if [ -n "${BASH_SOURCE[0]}" ]; then
@@ -63,11 +65,8 @@ check_os() {
     IS_BASH_USER=0
     if [[ "$OSTYPE" == "darwin"* ]]; then
         OS="macOS"
-        SHELL_RC="$HOME/.zshrc"
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         OS="Linux"
-        # 메뉴는 zsh 전용이므로 항상 .zshrc 사용
-        SHELL_RC="$HOME/.zshrc"
         # 현재 셸이 bash인지 확인 (안내용)
         if [ -z "$ZSH_VERSION" ]; then
             IS_BASH_USER=1
@@ -77,12 +76,39 @@ check_os() {
         echo "Windows 사용자는 install_windows.ps1을 사용해주세요."
         exit 1
     fi
+
+    # 타겟 셸에 맞는 rc 파일 선택
+    if [ "$TARGET_SHELL" = "bash" ]; then
+        if [[ "$OS" == "macOS" ]]; then
+            # macOS는 보통 .bash_profile이 로그인 셸 진입점
+            if [ -f "$HOME/.bashrc" ]; then
+                SHELL_RC="$HOME/.bashrc"
+            else
+                SHELL_RC="$HOME/.bash_profile"
+            fi
+        else
+            SHELL_RC="$HOME/.bashrc"
+        fi
+    else
+        SHELL_RC="$HOME/.zshrc"
+    fi
+
     info "운영체제: $OS"
+    info "타겟 셸: $TARGET_SHELL"
     info "설정 파일: $SHELL_RC"
 }
 
-# zsh 설치 확인 (없으면 친절한 안내 후 종료)
-check_zsh() {
+# 셸 설치 확인 (없으면 친절한 안내 후 종료)
+check_shell() {
+    if [ "$TARGET_SHELL" = "bash" ]; then
+        if command -v bash >/dev/null 2>&1; then
+            info "bash 발견: $(command -v bash)"
+            return 0
+        fi
+        error "bash가 설치되어 있지 않습니다. (정말?)"
+        exit 1
+    fi
+
     if command -v zsh >/dev/null 2>&1; then
         info "zsh 발견: $(command -v zsh)"
         return 0
@@ -128,6 +154,9 @@ check_zsh() {
     echo ""
     echo -e "설치 후 다시 ${YELLOW}./install.sh${NC} 를 실행해주세요."
     echo ""
+    echo -e "${CYAN}또는 bash 버전으로 설치하려면:${NC}"
+    echo -e "   ${YELLOW}./install.sh --bash${NC}"
+    echo ""
     exit 1
 }
 
@@ -147,13 +176,13 @@ copy_files() {
     info "메뉴 파일 복사 중..."
     info "소스 디렉토리: $SCRIPT_DIR"
 
-    # 현재 스크립트 위치에서 menu.zsh 찾기
+    # 현재 스크립트 위치에서 메뉴 파일 찾기
     if [ -f "$SCRIPT_DIR/$MENU_FILE" ]; then
         cp "$SCRIPT_DIR/$MENU_FILE" "$INSTALL_DIR/"
-        success "menu.zsh 복사 완료: $SCRIPT_DIR/$MENU_FILE -> $INSTALL_DIR/"
+        success "$MENU_FILE 복사 완료: $SCRIPT_DIR/$MENU_FILE -> $INSTALL_DIR/"
     else
-        error "menu.zsh 파일을 찾을 수 없습니다: $SCRIPT_DIR/$MENU_FILE"
-        echo "install.sh와 같은 디렉토리에 menu.zsh가 있어야 합니다."
+        error "$MENU_FILE 파일을 찾을 수 없습니다: $SCRIPT_DIR/$MENU_FILE"
+        echo "install.sh와 같은 디렉토리에 $MENU_FILE가 있어야 합니다."
         exit 1
     fi
 
@@ -171,23 +200,28 @@ copy_files() {
 configure_shell() {
     info "쉘 설정 파일 업데이트 중..."
 
-    local source_line="# Seongmin's ZSH Menu"
+    local source_line="# $MARKER_COMMENT"
     local source_cmd="source \"$INSTALL_DIR/$MENU_FILE\""
+    # 설치 디렉토리 이름(.zsh_menu / .bash_menu)을 제거 매칭에 활용
+    local install_basename
+    install_basename="$(basename "$INSTALL_DIR")"
 
-    # .zshrc가 없으면 새로 생성
+    # rc 파일이 없으면 새로 생성
     if [ ! -f "$SHELL_RC" ]; then
         touch "$SHELL_RC"
         success "$SHELL_RC 파일을 새로 생성했습니다"
     fi
 
-    # 이미 추가되어 있는지 확인
-    if grep -q "Seongmin's ZSH Menu" "$SHELL_RC" 2>/dev/null; then
+    # 이미 추가되어 있는지 확인 (zsh / bash 양쪽 마커 모두 검사)
+    if grep -qE "Seongmin's (ZSH|BASH) Menu" "$SHELL_RC" 2>/dev/null; then
         warn "이미 설정되어 있습니다. 기존 설정을 업데이트합니다."
-        # 기존 설정 제거
+        # 기존 설정 제거 (zsh / bash 마커 모두)
         if [[ "$OS" == "macOS" ]]; then
-            sed -i '' '/# Seongmin.*ZSH Menu/,/source.*zsh_menu/d' "$SHELL_RC"
+            sed -i '' "/# Seongmin.*ZSH Menu/,/source.*\\.zsh_menu/d" "$SHELL_RC"
+            sed -i '' "/# Seongmin.*BASH Menu/,/source.*\\.bash_menu/d" "$SHELL_RC"
         else
-            sed -i '/# Seongmin.*ZSH Menu/,/source.*zsh_menu/d' "$SHELL_RC"
+            sed -i "/# Seongmin.*ZSH Menu/,/source.*\\.zsh_menu/d" "$SHELL_RC"
+            sed -i "/# Seongmin.*BASH Menu/,/source.*\\.bash_menu/d" "$SHELL_RC"
         fi
     fi
     
@@ -241,15 +275,26 @@ uninstall() {
         success "설치 디렉토리 삭제 완료"
     fi
     
-    # 쉘 설정에서 제거
-    if [ -f "$SHELL_RC" ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' '/# Seongmin.*ZSH Menu/,/source.*zsh_menu/d' "$SHELL_RC"
-        else
-            sed -i '/# Seongmin.*ZSH Menu/,/source.*zsh_menu/d' "$SHELL_RC"
-        fi
-        success "쉘 설정 제거 완료"
+    # bash 설치본도 함께 제거
+    if [ -d "$HOME/.bash_menu" ]; then
+        rm -rf "$HOME/.bash_menu"
+        success "bash 설치 디렉토리 제거 완료"
     fi
+
+    # 쉘 설정에서 제거 (.zshrc, .bashrc, .bash_profile 모두 정리)
+    local rc
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+        if [ -f "$rc" ]; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' '/# Seongmin.*ZSH Menu/,/source.*\.zsh_menu/d' "$rc"
+                sed -i '' '/# Seongmin.*BASH Menu/,/source.*\.bash_menu/d' "$rc"
+            else
+                sed -i '/# Seongmin.*ZSH Menu/,/source.*\.zsh_menu/d' "$rc"
+                sed -i '/# Seongmin.*BASH Menu/,/source.*\.bash_menu/d' "$rc"
+            fi
+        fi
+    done
+    success "쉘 설정 제거 완료 (.zshrc / .bashrc / .bash_profile)"
     
     echo ""
     success "삭제가 완료되었습니다."
@@ -259,27 +304,49 @@ uninstall() {
 
 # 메인 로직
 main() {
+    # 인자 파싱 (--bash / --zsh / --uninstall)
+    local do_uninstall=0
+    for arg in "$@"; do
+        case "$arg" in
+            --bash)
+                TARGET_SHELL="bash"
+                INSTALL_DIR="$HOME/.bash_menu"
+                MENU_FILE="menu.bash"
+                MARKER_COMMENT="Seongmin's BASH Menu"
+                ;;
+            --zsh)
+                TARGET_SHELL="zsh"
+                INSTALL_DIR="$HOME/.zsh_menu"
+                MENU_FILE="menu.zsh"
+                MARKER_COMMENT="Seongmin's ZSH Menu"
+                ;;
+            --uninstall|-u)
+                do_uninstall=1
+                ;;
+        esac
+    done
+
     print_banner
-    
+
     # 삭제 옵션 확인
-    if [ "$1" = "--uninstall" ] || [ "$1" = "-u" ]; then
+    if [ "$do_uninstall" = "1" ]; then
         check_os
         uninstall
         exit 0
     fi
-    
+
     # 설치 진행
-    echo -e "${YELLOW}설치를 진행하시겠습니까? (y/n)${NC}"
+    echo -e "${YELLOW}설치를 진행하시겠습니까? (y/n) [타겟: $TARGET_SHELL]${NC}"
     read -r response
-    
+
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
         echo "설치가 취소되었습니다."
         exit 0
     fi
-    
+
     echo ""
     check_os
-    check_zsh
+    check_shell
     create_install_dir
     copy_files
     configure_shell
@@ -305,17 +372,21 @@ main() {
     echo -e "   ${CYAN}dxk help${NC} 로 직접 실행 모드 도움말을 볼 수 있습니다."
     echo ""
 
-    # 자동으로 zsh 진입 (bash 사용자에게는 일시적, zsh 사용자는 셸 재시작 효과)
-    if [ "$IS_BASH_USER" = "1" ]; then
-        echo -e "${YELLOW}zsh를 실행합니다. (exit 입력 시 bash로 돌아옵니다)${NC}"
-    else
-        echo -e "${YELLOW}쉘을 재시작하여 변경사항을 적용합니다...${NC}"
-    fi
+    # 변경사항 적용을 위해 타겟 셸 재시작
+    echo -e "${YELLOW}쉘을 재시작하여 변경사항을 적용합니다... ($TARGET_SHELL)${NC}"
     sleep 1
-    if command -v zsh >/dev/null 2>&1; then
-        exec zsh
+    if [ "$TARGET_SHELL" = "bash" ]; then
+        if command -v bash >/dev/null 2>&1; then
+            exec bash
+        else
+            warn "bash 실행 실패. 새 터미널을 열거나 'bash' 를 직접 실행해주세요."
+        fi
     else
-        warn "zsh 실행 실패. 새 터미널을 열거나 'zsh' 를 직접 실행해주세요."
+        if command -v zsh >/dev/null 2>&1; then
+            exec zsh
+        else
+            warn "zsh 실행 실패. 새 터미널을 열거나 'zsh' 를 직접 실행해주세요."
+        fi
     fi
 }
 
